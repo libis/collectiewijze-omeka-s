@@ -1,0 +1,16 @@
+version: '2'
+
+services:
+
+  omeka-s:
+    build: ./
+    ports:
+      - "9018:80"
+    volumes:
+      - ./modules/:/var/www/html/collectiewijzer/modules/
+      - ./themes/:/var/www/html/collectiewijzer/themes/
+      - ./files/:/var/www/html/collectiewijzer/files/
+      - ./config/:/var/www/html/collectiewijzer/config/
+      - ./htaccess:/var/www/html/collectiewijzer/.htaccess
+      - ./imagemagick-policy.xml:/var/www/html/collectiewijzer/imagemagick-policy.xml
+    restart: "no"
