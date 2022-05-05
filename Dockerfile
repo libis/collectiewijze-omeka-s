@@ -33,11 +33,11 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
   && docker-php-ext-install -j "$(nproc)" gd
 
 RUN usermod -u 10000 www-data \
-  && wget --no-verbose "https://github.com/omeka/omeka-s/releases/download/v3.1.0/omeka-s-3.1.0.zip" -O /var/www/omeka-s.zip \
+  && wget --no-verbose "https://github.com/omeka/omeka-s/releases/download/v3.2.0/omeka-s-3.2.0.zip" -O /var/www/omeka-s.zip \
   && unzip -q /var/www/omeka-s.zip -d /var/www/ \
   &&  rm /var/www/omeka-s.zip \
-  &&  rm -rf /var/www/html/collectiewijzer/ \
-  &&  mv /var/www/omeka-s /var/www/html/collectiewijzer/ \
+  &&  rm -rf /var/www/html/tdc/ \
+  &&  mv /var/www/omeka-s /var/www/html/tdc/ \
   &&  chown -R www-data:www-data /var/www/html/
 
 ADD php.ini-development /usr/local/etc/php

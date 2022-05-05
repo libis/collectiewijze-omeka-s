@@ -100,7 +100,13 @@ class Harvest extends AbstractJob
                 $method = '_oaidcToJson';
                 break;
             case 'oai_veb':
-                $method = '_mmfcToJson';
+				if(strpos($args["endpoint"], 'collectiewijzer') !== false):
+					//import collectiewijzer
+					$method = '_cwToJson';
+				else:
+					//import mmfc
+					$method = '_mmfcToJson';
+				endif;
                 break;    
             case 'oai_dcterms':
             case 'oai_dcq':
@@ -193,8 +199,11 @@ class Harvest extends AbstractJob
                     }
                 }
                 $pre_record = $this->{$method}($record, $args['item_set_id'],$args);
-                $id_exists = $this->itemExists($pre_record, $pre_record['cw:idno'][0]['@value'],$args['resource_type']);
-               
+				if(strpos($args["endpoint"], 'collectiewijzer') !== false):
+					$id_exists = $this->itemExists($pre_record, $pre_record['cw:idno'][0]['@value'],$args['resource_type']);
+                else:
+					$id_exists = $this->itemExists($pre_record, $pre_record['mmfc:idno'][0]['@value'],$args['resource_type']);
+				endif;
                 if(!$id_exists){
                   try{
                       $response_c = $this->api->create($args['resource_type'], $pre_record, [], []);
@@ -242,17 +251,30 @@ class Harvest extends AbstractJob
     }
 
     protected function itemExists($item, $id_version, $resource_type){
-        //assuming cw:idno unique accross all items
+        
+		$args = $this->job->getArgs();
         $query = [];
-        //$this->logger->info($id_version);
-        $query['property'][0] = array(
-          'property' => 192,
-          'text' => $id_version,
-          'type' => 'eq',
-          'joiner' => 'and'
-        );
-       
-        //$query['resource_template_id'][] = $item['o:resource_template']["o:id"];
+		
+		if(strpos($args["endpoint"], 'collectiewijzer') !== false):
+			//assuming cw:idno unique accross all items
+			//$this->logger->info($id_version);
+			$query['property'][0] = array(
+			  'property' => 819,
+			  'text' => $id_version,
+			  'type' => 'eq',
+			  'joiner' => 'and'
+			);
+		else:
+			//assuming mmfc:idno unique accross all items
+			$query['property'][0] = array(
+			  'property' => 185,
+			  'text' => $id_version,
+			  'type' => 'eq',
+			  'joiner' => 'and'
+			);
+		endif;
+        
+        $query['resource_template_id'][] = $item['o:resource_template']["o:id"];
         $results = '';
         $response = $this->api->search($resource_type,$query);
         $results = $response->getContent();
@@ -262,8 +284,7 @@ class Harvest extends AbstractJob
             try{
               //don't update files for to avoid redownload
               if(isset($item['o:media'])):
-                //$this->logger->info("media - 5");
-                //unset($item['o:media']);
+                unset($item['o:media']);
               endif;
               $response = $this->api->update($resource_type, $result->id() ,$item, [], ['isPartial' => true, 'flushEntityManager' => true]);
               $response = null;
@@ -384,7 +405,7 @@ class Harvest extends AbstractJob
         return $meta;
     }
 
-    private function _mmfcToJson(SimpleXMLElement $record, $setId,$args)
+    private function _cwToJson(SimpleXMLElement $record, $setId,$args)
     {
         //$this->logger->info("1");
         $dcMetadata = $record
@@ -398,7 +419,7 @@ class Harvest extends AbstractJob
         foreach ($this->dcProperties as $propertyId => $localName) {
             //$this->logger->info($localName);
             if (isset($dcMetadata->$localName)) {
-                $this->logger->info($dcMetadata->$localName);
+                
                 $elementTexts["cw:$localName"] = $this->extractValues($dcMetadata, $propertyId);
             }
 
@@ -407,18 +428,52 @@ class Harvest extends AbstractJob
               
               foreach ($dcMetadata->$localName as $template_label) {
                     if($template_label == "Collection focus"){
-                        $template_id = 3;
+                        $template_id = 6;
                     }
                     if($template_label == "Institution collection"){
-                        $template_id = 2;
+                        $template_id = 9;
                     }
                     if($template_label == "Sub-collection"){
-                        $template_id = 4;
+                        $template_id = 18;
+                    }
+                    if($template_label == "Organisation"){
+                        $template_id = 12;
+                    }
+                    if($template_label == "Publication"){
+                        $template_id = 15;
                     }
                 }
             }
             //add media if Beeld or Collectie
-            if($localName == 'collIllustration'){
+            if($localName == 'colIllustrationFile'){
+                //$this->logger->info("media - 1");
+                
+                foreach ($dcMetadata->$localName as $imageUrl) {
+                    //$this->logger->info("media - ".$imageUrl);                   
+
+                    $string = $imageUrl.'';
+                    preg_match('/<img(.*)src(.*)=(.*)"(.*)"/U', $string, $result);
+                    $foo = array_pop($result);
+                    $imageUrl =  $foo;
+                    $this->logger->info($imageUrl);
+                    $media[$imgc]= [
+                      'o:ingester' => 'url',
+                      'o:source' => $imageUrl.'',
+                      'ingest_url' => $imageUrl.'',
+                      'dcterms:title' => [
+                          [
+                              'type' => 'literal',
+                              '@language' => '',
+                              '@value' => $localName.'',
+                              'property_id' => 1,
+                          ],
+                      ],
+                  ];
+                  $imgc++;
+                }
+            }
+
+            if($localName == 'logoBestand'){
                 //$this->logger->info("media - 1");
                 
                 foreach ($dcMetadata->$localName as $imageUrl) {
@@ -457,6 +512,65 @@ class Harvest extends AbstractJob
         //$meta['o:item_set'] = ["o:id" => $setId];
         return $meta;
     }
+	
+	private function _mmfcToJson(SimpleXMLElement $record, $setId,$args)
+    {
+        //$this->logger->info("1");
+        $dcMetadata = $record
+            ->metadata
+            ->children('')
+            ->children('mmfc',true);
+
+        $elementTexts = [];$media = [];$imgc = 0;
+        foreach ($this->dcProperties as $propertyId => $localName) {
+            //$this->logger->info($localName);
+            if (isset($dcMetadata->$localName)) {
+                //$this->logger->info("3");
+                $elementTexts["mmfc:$localName"] = $this->extractValues($dcMetadata, $propertyId);
+            }
+            //add media if Beeld or Collectie
+            /*if($localName == 'msOwnersMarcImage' || $localName == 'msReprBindingImage' || $localName == 'msPageRepresentationImage' || $localName == 'msHandsRepresentationImage' || $localName == 'msWatermarkRepresentationImage'){
+                //$this->logger->info("media - 1");
+                
+                foreach ($dcMetadata->$localName as $imageUrl) {
+                    
+                    $media[$imgc]= [
+                      'o:ingester' => 'url',
+                      'o:source' => $imageUrl.'',
+                      'ingest_url' => $imageUrl.'',
+                      'dcterms:title' => [
+                          [
+                              'type' => 'literal',
+                              '@language' => '',
+                              '@value' => $localName.'',
+                              'property_id' => 1,
+                          ],
+                      ],
+                  ];
+                  $imgc++;
+                }
+            }*/    
+        }
+        $meta = $elementTexts;
+        $imgs = array();
+        foreach($media as $img):
+            $imgs[] = $img;            
+        endforeach;
+        if($imgs):
+            $meta['o:media'] = $imgs;
+        endif;
+		if(strpos($args["endpoint"], 'msIdentifier') !== false):
+			$meta['o:resource_template'] = ["o:id" => "2"];
+		elseif(strpos($args["endpoint"], 'msContainer') !== false):
+			$meta['o:resource_template'] = ["o:id" => "3"];
+		elseif(strpos($args["endpoint"], 'msArtefact') !== false):
+			$meta['o:resource_template'] = ["o:id" => "5"];	
+		elseif(strpos($args["endpoint"], 'msContentItem') !== false):
+			$meta['o:resource_template'] = ["o:id" => "4"];	
+		endif;
+        //$meta['o:item_set'] = ["o:id" => $setId];
+        return $meta;
+    }
 
     protected function extractValues(SimpleXMLElement $metadata, $propertyId)
     {
@@ -464,9 +578,13 @@ class Harvest extends AbstractJob
         $localName = $this->dcProperties[$propertyId];
         foreach ($metadata->$localName as $value) {
             $texts = trim((string) $value);
-            if($localName != 'msLayoutBase'):
-                $texts = explode('||',$texts);
+			
+            if($localName == 'msLayoutBase'):
+               $texts = str_replace("|","!",$texts);
             endif;
+
+            $texts = explode('||',$texts);
+			
             foreach($texts as $text):
                 if (!mb_strlen($text)) {
                     continue;

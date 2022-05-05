@@ -23,7 +23,7 @@ $showPagePagination = $this->siteSetting('show_page_pagination', true);
         if ($activePage['depth'] !== 0): ?>
           <li><?php echo $nav->breadcrumbs()->setSeparator('</li><li>'); ?></li>
         <?php else:?>
-          <li><a href="<?php $site->url();?>">Home</a></li>
+          <li><a href="<?php echo $site->url();?>">Home</a></li>
           <li><?php echo $page->title();?></li>    
         <?php endif; ?>
       <?php endif; ?>  

@@ -10,7 +10,7 @@
       <?php for($i = 1; $i <= sizeof($attachments); $i++){ ?>
         <div class="column">
           <div class="card equal-height">
-            <a href="<?php echo $block->dataValue('link'.$i);?>">
+           
               <?php
                 $url='';
                 if($attachments[$i-1]):
@@ -38,8 +38,7 @@
              
               <div class="card-content">
                 <div class="content">
-                  <h3 class="title"> <a href="<?php echo $block->dataValue('link'.$i);?>"><?php echo $block->dataValue('title'.$i);?></a>
-                </h3>
+                  <h3 class="title"><?php echo $block->dataValue('title'.$i);?></h3>
                   <?php echo $block->dataValue('text'.$i);?>
                 </div>
               </div>
@@ -49,7 +48,6 @@
                   <?php echo $block->dataValue('linktext'.$i);?></a>
                 </footer>
               <?php endif;?>
-            </a>
           </div>
         </div>
       <?php } ?>

@@ -107,6 +107,18 @@ body{
   margin-top: 2rem;
 }
 
+.tagblock{
+  background: #eee;
+  padding:1.5rem;
+
+  ul{
+    margin:0;
+    padding-left: 1rem;
+    list-style: circle;
+    font-size: 0.95rem;
+  }
+}
+
 .text{
   overflow:hidden;
 }
@@ -166,10 +178,24 @@ body{
   }
 }
 
+.navbar.is-fixed-bottom, .navbar.is-fixed-top {
+  left: 0;
+  position: fixed;
+  right: 0;
+  z-index: 11000;
+}
+
 .content h3{
   text-transform: uppercase;
   font-size: 1.1rem;
   font-weight: bold;
+  margin-bottom: 0.8rem !important;
+}
+
+.content h5{
+  font-weight:600;
+  font-size: 1rem;
+  text-transform: uppercase;
   margin-bottom: 0.8rem !important;
 }
 
@@ -187,7 +213,7 @@ body{
 }
 
 .card-content{
-  padding: 0rem 1.5rem 1.5rem 1.5rem;
+  padding: 1.5rem 1.5rem 1.5rem 1.5rem;
 }
 
 .card-footer-item{
@@ -268,11 +294,15 @@ body{
   display: flex;
 }
 
+.slick-slide img{
+  //min-width:200px;
+}
+
 .slick-track .slick-slide {
-  display: flex;
   height: auto;
   align-items: center;
   justify-content: center;
+
 }
 
 .slick-slider{
@@ -314,7 +344,7 @@ body{
   .slick-center{
     //padding: 1rem !important;
     .slide-container{
-      transform: scale(1.2);
+      //transform: scale(1.2);
       opacity: 1;
     }
   }
@@ -398,11 +428,11 @@ body{
     font-size: 0.9rem !important;
 
     a{
-      padding-left: 0;
+      padding: 0;
     }
 
     li::before {
-      padding-right: 0.5rem;
+      padding: 0 0.5rem;
     }
   }
 }
@@ -511,12 +541,25 @@ body{
   margin-top:.75rem;
   padding:1rem 1rem 1rem 1rem;
   border-top: 1px solid #ededed;
+
 }
 
 .resource-metadata-grid{
-  padding:0 1rem 1rem 1rem;
+  padding:0 0.5rem 0.5rem 0.5rem;
   border: 1px solid #ededed;
   min-height:5rem;
+
+  h5{
+    font-size:0.9rem !important;
+  }
+
+  h4{
+    font-size: 1.1rem !important;
+  }
+
+  .description{
+    display: none;
+  }
 }
 
 .list{
@@ -679,7 +722,7 @@ body{
       margin-bottom: 0.2rem;
     }
     li:before {
-      content: counters(item, ".") " ";
+      
       counter-increment: item
     }
 

@@ -37,21 +37,23 @@ $translate = $this->plugin('translate');
       <div class="slide">
             <?php
               $mediaurl = "";
-              $media = $resource->media();
-              
+              $media = $resource->media();              
               $url = $resource->url();
             ?>
 
             <div class="slide-container">
               <a href="<?php echo $url;?>">              
               <div>
-                <?php echo $media[0]->render();?>
-                <img src="">
+                <?php if($media):?>
+                  <img src="<?php echo $media[0]->thumbnailUrl('medium');?>">
+                <?php else:?>                  
+                  <img src="/collectiewijzer/application/asset/thumbnails/default.png?v=3.1.0">
+                <?php endif;?>
               </div>
               <div class="slide-content">
                 
                 <h5 class="title is-6 is-family-secondary">
-                    <?php echo $resource->value('dcterms:title');?>
+                    <?php echo $resource->value('cw:preferred_labels');?>
                 </h5>
               
                 <div class="content">
@@ -75,19 +77,11 @@ $translate = $this->plugin('translate');
       <?php endforeach; ?>
      
       </div>
-    <?php if ($this->linkText):?>
       <div class="browse-all has-text-right">
-        <?php if($this->linkText == 'All collections'):?>
-          <a href="<?php echo $block->page()->site()->url().'/item-set';?>" class="button is-white">
+          <a href="https://services3.libis.be/collectiewijzer/s/start/search" class="button is-primary is-outlined">
             <?php echo $this->linkText;?>
           </a>
-        <?php else:?>
-          <a class="button is-outlined is-primary" href="<?php echo $block->page()->site()->url().'/page/'.strtolower($type);?>">
-            <?php echo $this->linkText;?>
-          </a>
-        <?php endif;?>
       </div>
-    <?php endif;?>
     <?php endif;?>
   </div>
 </section>
