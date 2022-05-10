@@ -43,10 +43,10 @@
                 </div>
               </div>
               <?php if($block->dataValue('link'.$i) && $block->dataValue('linktext'.$i)):?>
-              <footer class="card-footer">
+              <div class="card-footer">
                 <a class="card-footer-item" href="<?php echo $block->dataValue('link'.$i);?>">
                   <?php echo $block->dataValue('linktext'.$i);?></a>
-                </footer>
+              </div>
               <?php endif;?>
           </div>
         </div>
