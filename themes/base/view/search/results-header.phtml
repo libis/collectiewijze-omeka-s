@@ -1,46 +1,27 @@
 <?php
 /**
- * @var \Zend\View\Renderer\PhpRenderer $this
- * @var \Search\Query $query
- * @var \Search\Response $response
- * @var array $sortOptions
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var \AdvancedSearch\Api\Representation\SearchConfigRepresentation $searchPage
+ * @var \AdvancedSearch\Query $query
+ * @var \AdvancedSearch\Response $response
+ * @var \Omeka\Api\Representation\ItemSetRepresentation $itemSet
+ * @var int $documentCount
+ * @var string $pagination
  */
 
-$translate = $this->plugin('translate');
+$plugins = $this->getHelperPluginManager();
+$translate = $plugins->get('translate');
+$translatePlural = $plugins->get('translatePlural');
 ?>
 
-<div class="level" style="margin-bottom:0.5rem;">
-  <div class="level-left">
-
-  </div>
-  <div class="level-right">
-    <div class="level-item">
-        <form class="sort-form">
-            <?php
-            if ($sortOptions):
-                $sortOptions = array_map([$this, 'translate'], $sortOptions);
-                $sortSelect = new Zend\Form\Element\Select('sort');
-                $sortSelect
-                    ->setValueOptions($sortOptions)
-                    ->setValue($query->getSort())
-                    ->setLabel($translate('Sort by'));
-            endif;
-            ?>
-            <?php if (!empty($sortSelect)): ?>
-            <?= $this->formLabel($sortSelect) ?>
-            <?= $this->formSelect($sortSelect) ?>
-            <?php endif; ?>
-        </form>
+<div class="search-results-header">
+    <div class="search-results-count">
+        <?= $pagination ?>
     </div>
-    <div class="level-item">
-        <a class="button search-view-type search-view-type-list" href="#">
-          <span class="icon is-small">
-            <i class="fas fa-list"></i>
-          </span></a>
-
-        <a class="button search-view-type search-view-type-grid" href="#"><span class="icon is-small">
-          <i class="fas fa-th"></i>
-        </span></a>
+    <?= $this->searchSortSelector($query, $searchPage->subSetting('sort', 'fields')) ?>
+    <div>
+        <a class="search-view-type search-view-type-list" href="#"><?= $translate('list') ?></a>
+        |
+        <a class="search-view-type search-view-type-grid" href="#"><?= $translate('grid') ?></a>
     </div>
-  </div>
 </div>
