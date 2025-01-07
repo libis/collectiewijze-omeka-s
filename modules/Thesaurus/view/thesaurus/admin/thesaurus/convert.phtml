@@ -1,0 +1,29 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var \Thesaurus\Form\ConvertForm $form
+ */
+
+$plugins = $this->getHelperPluginManager();
+$assetUrl = $plugins->get('assetUrl');
+$translate = $plugins->get('translate');
+
+$this->headLink()
+    ->appendStylesheet($assetUrl('css/thesaurus-admin.css', 'Thesaurus'));
+
+$this->htmlElement('body')->appendAttribute('class', 'thesaurus tree convert');
+
+$form->prepare();
+?>
+
+<?= $this->pageTitle($translate('Convert'), 1, $translate('Thesaurus')) ?>
+
+<p class="explanation">
+    <?= $translate('Convert a list into a thesaurus.') ?>
+    <?= $translate('Properties and separator should be set in main settings.') ?>
+</p>
+<p>
+    <?= $this->form()->openTag($form) ?>
+    <?= $this->formCollection($form, false) ?>
+    <?= $this->form()->closeTag($form) ?>
+</p>

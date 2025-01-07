@@ -6,15 +6,36 @@ $this->htmlElement('body')->appendAttribute('class', 'item resource show');
 $embedMedia = $this->siteSetting('item_media_embed', false);
 $itemMedia = $item->media();
 $template = $item->resourceTemplate();
+$alleToepassingen = array('onderbouw','draagstructuur','isolatie (thermisch)','isolatie (akoestisch)','ventilatie','constructie - wand', 'constructie - vloer', 'constructie - dak', 'afwerking - wand (binnen)','afwerking - wand (buiten)','afwerking - vloer','afwerking - plafond','afwerking - coatings','afwerking - dak','binnenschrijnwerk','buitenschrijnwerk','inrichting - meubilair','inrichting - textiel','bevestiging- en verwerkingsmateriaal','verwarming en koeling','elektriciteit','sanitair');
 if($template):
   $type = $template->label();
 else:
   $type = "";
 endif;
 ?>
+
+<style>
+  .slick-prev:before,
+  .slick-next:before {
+    color: #007bff;
+    font-size: 25px;
+  }
+  .slick-next{
+    right: 0px;
+  }
+  #carousel::before {
+    line-height: 1;
+    display: inline-block;
+    content: '';
+  }
+  .slider-for .slick-slide img {
+    max-height: fit-content;
+  }
+</style>
+
 <div class="container">
-  <div >
-    <div id="portal-breadcrumbs" class="breadcrumbs" style="display:block;">
+  <div>
+    <div id="portal-breadcrumbs" class="breadcrumbs" style="display:block;padding-top:5%;">
       <span class="breadcrumb-item">
           <a href="<?php echo $site->url();?>">Home</a>
       </span>
@@ -25,7 +46,7 @@ endif;
         </span>
       <?php else:?>
         <span class="breadcrumb-item">
-          <a href="<?php echo $site->url()."/find";?>">Search</a>         
+          <a href="<?php echo $site->url()."/find";?>">Uitgebreid Zoeken</a>         
         </span>    
       <?php endif;?>
       <span class="breadcrumb-item active">
@@ -123,23 +144,67 @@ endif;
     </div>
   </div>
   <?php else:?>
-    <div class="row">
+    <div class="row" style="margin-bottom: 2rem;">
+    <div class="col-xs-12 col-md-7">
+        <span class="text-left"><h3>Vindplaats Gent: <?php echo $item->value('tdc:vindplaats');?></h3></span>
+        <?php if ($item->value('tdc:vindplaatsBrussel')): ?>
+        <span class="text-left"><h3>Vindplaats Campus Rabot Gent: <?php echo $item->value('tdc:vindplaatsBrussel');?></h3></span>
+        <?php endif; ?>
+        <div class="text-box card card-gray" style="margin-bottom:0; margin-top:10px;">
+          <div style="margin:5%"><?php echo $item->value('tdc:korteBeschrijving');?></div>
+          <div style="padding:10%;">
+          <?php
+                $toepassingen = $item->value('tdc:toepassingen', ['all' => true]);
+                foreach ($alleToepassingen as $toep){ 
+                    $png = "img/" . $toep . ".png";
+                    if (in_array($toep,$toepassingen)): ?>
+                    <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:toepassingen][]=<?php echo $toep;?>" data-toggle="tooltip" title="<?php echo $toep;?>" class="badge badge-primary">
+                    <img style="width: 34px;height: 34px;" src="<?php echo $this->assetUrl($png);?>">
+                    </a>
+              <?php else: ?>
+                <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:toepassingen][]=<?php echo $toep;?>" data-toggle="tooltip" title="<?php echo $toep;?>" class="badge badge-secondary">
+                <img style="width: 34px;height: 34px;" style="opacity: 0.2;" src="<?php echo $this->assetUrl($png);?>">
+                </a>
+              <?php endif; } ?>
+          </div>
+        </div>
+      </div>
       <?php if (!$embedMedia && $itemMedia): ?>
-        <div class="col-xs-12 col-md-4">
+        <div class="col-xs-12 col-md-5">
+          <div id="carousel" class="slider-for slick-slider" style="margin-top: 10px;">
           <?php foreach($itemMedia as $media):?>
             <div class="has-text-centered">
-              <?php $url = str_replace('http:', '', $media->thumbnailUrl('medium'));?>
+              <?php $url = str_replace('http:', '', $media->thumbnailUrl('large'));?>
               <?php $link = $url;?>
               <?php if($viewerlink):?>
                   <?php $link = $viewerlink;?>
               <?php endif;?> 
               <a target="_blank" href="<?php echo $link;?>"><img src="<?php echo $url;?>"></a>
+              <!-- <img src="<?php echo $url;?>"> -->
             </div>
           <?php endforeach;?>
+          </div>
+          <?php if(count($itemMedia) > 1): ?>
+          <div class="slider-nav slick-slider">
+          <?php foreach($itemMedia as $media):?>
+            <div class="has-text-centered">
+              <?php $url = str_replace('http:', '', $media->thumbnailUrl('square'));?>
+              <?php $link = $url;?>
+              <?php if($viewerlink):?>
+                  <?php $link = $viewerlink;?>
+              <?php endif;?> 
+              <img src="<?php echo $url;?>">
+              <!-- <img src="<?php echo $url;?>"> -->
+            </div>
+          <?php endforeach;?>
+          </div>
+          <?php endif;?>
         </div>         
       <?php endif;?>
-      <div class="col-xs-12 col-md-8">
-        <div class="text-box" style="height:100%;margin-bottom:0;">
+    </div>
+    <div class="row">
+    <div class="col-xs-12" style="padding-top: 0.50rem;">
+        <div class="text-box card card-gray" style="height:100%;margin-bottom:0;">
           <?php echo $item->displayValues(); ?>
         </div>
       </div>
@@ -169,25 +234,29 @@ $subjectValues = $item->subjectValues();
 </div>
 
 <?php $this->trigger('view.show.after'); ?>
+
 <script>
-  $(document).ready(function(){
-    $('.slider-for').slick({
+  $jq = jQuery.noConflict();
+  $jq(document).ready(function(){
+    $jq('.slider-for').slick({
       slidesToShow: 1,
       slidesToScroll: 1,
-      arrows: false,
+      arrows: true,
       fade: true,
       centerMode: true
     });
-    $('.slider-nav').slick({
-      slidesToShow: 10,
+    $jq('.slider-nav').slick({
+      slidesToShow: 3,
       slidesToScroll: 1,
       asNavFor: '.slider-for',
-      focusOnSelect: true
+      arrows: false,
+      centerMode: true,
+      focusOnSelect: true,
+      centerPadding: '60px'
     });
 
-    $('.slide-wrap').on('contextmenu', 'img', function(e){ 
+    $jq('.slide-wrap').on('contextmenu', 'img', function(e){ 
       return false; 
     });
-
   });
 </script>

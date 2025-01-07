@@ -28,15 +28,22 @@ class ItemWithMetadata extends AbstractBlockLayout
         // Factory is not used to make rendering simpler.
         $services = $site->getServiceLocator();
         $formElementManager = $services->get('FormElementManager');
-        $defaultSettings = $services->get('Config')['blockplus']['block_settings']['itemWithMetadata'];
+        //$defaultSettings = $services->get('Config')['blockplus']['block_settings']['itemWithMetadata'];
         $blockFieldset = \BlockPlus\Form\ItemWithMetadataFieldset::class;
 
-        $data = $block ? $block->data() + $defaultSettings : $defaultSettings;
+        $defaults = [
+            'heading' => '',
+            'column' => 'Toepassing',
+        ];
+        $data = $block ? $block->data() + $defaults : $defaults;
 
-        $dataForm = [];
-        foreach ($data as $key => $value) {
-            $dataForm['o:block[__blockIndex__][o:data][' . $key . ']'] = $value;
-        }
+        $dataForm = [
+            'o:block[__blockIndex__][o:data][column]' => $data['column'],
+            'o:block[__blockIndex__][o:data][heading]' => $data['heading'],
+        ];
+        // foreach ($data as $key => $value) {
+        //     $dataForm['o:block[__blockIndex__][o:data][' . $key . ']'] = $value;
+        // }
 
         $fieldset = $formElementManager->get($blockFieldset);
         $fieldset->populateValues($dataForm);
@@ -51,12 +58,13 @@ class ItemWithMetadata extends AbstractBlockLayout
     public function render(PhpRenderer $view, SitePageBlockRepresentation $block)
     {
         $attachments = $block->attachments();
-        if (!$attachments) {
-            return 'No item selected'; // @translate
-        }
+        // if (!$attachments) {
+        //     return 'No item selected'; // @translate
+        // }
 
         $vars = [
             'heading' => $block->dataValue('heading', ''),
+            'column' => $block->dataValue('column', 'Toepassing'),
             'attachments' => $attachments,
         ];
         $template = $block->dataValue('template', self::PARTIAL_NAME);

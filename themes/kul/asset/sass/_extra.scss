@@ -8,3 +8,29 @@
     display: inline-block;
     margin-right: 3px;
 }
+
+
+
+//contributions
+.contribute.main-form{
+   font-size:0.9rem; 
+   h4{
+    font-size:1rem !important;
+   }
+    .form-control{
+      display:inline !important;
+      width: 80% !important;
+    }
+    .actions{    
+       li{
+        line-height: 1;
+       } 
+      .remove-value {
+        background-color: rgba($primary,1);
+        padding: 2px 5px;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+    }
+}
+  

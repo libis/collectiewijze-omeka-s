@@ -20,6 +20,18 @@ class ItemWithMetadataFieldset extends Fieldset
                 ],
             ])
             ->add([
+                'name' => 'o:block[__blockIndex__][o:data][column]',
+                'type' => Element\Select::class,
+                'options' => [
+                    'label' => 'Toepassingen en materiaal', // @translate
+                    'info' => '1 of 2 blokken',
+                    'value_options' => [
+                        'col-md-12' => 'Toepassing', // @translate
+                        'col-md-6' => 'Toepassing en materiaal', // @translate
+                    ],
+                ],
+            ])
+            ->add([
                 'name' => 'o:block[__blockIndex__][o:data][template]',
                 'type' => TemplateSelect::class,
                 'options' => [

@@ -2,11 +2,11 @@
 
 namespace AdvancedSearch\Form\Admin;
 
-use AdvancedSearch\Form\Element\OptionalSelect;
+use AdvancedSearch\Form\Element as AdvancedSearchElement;
 use Doctrine\DBAL\Connection;
 use Laminas\Form\Element;
 use Laminas\Form\Fieldset;
-use Omeka\Form\Element\ArrayTextarea;
+use Omeka\Form\Element as OmekaElement;
 
 class ApiFormConfigFieldset extends Fieldset
 {
@@ -66,9 +66,9 @@ class ApiFormConfigFieldset extends Fieldset
             ->get('metadata')
             ->add([
                 'name' => 'id',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
-                    'label' => 'Internal identifier', // @translate
+                    'label' => 'Internal id', // @translate
                     'value_options' => $availableFields,
                     'empty_option' => 'None', // @translate
                     'use_hidden_element' => true,
@@ -80,7 +80,7 @@ class ApiFormConfigFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'is_public',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Is Public', // @translate
                     'value_options' => $availableFields,
@@ -94,7 +94,7 @@ class ApiFormConfigFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'owner_id',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Owner id', // @translate
                     'value_options' => $availableFields,
@@ -107,8 +107,22 @@ class ApiFormConfigFieldset extends Fieldset
                 ],
             ])
             ->add([
+                'name' => 'site_id',
+                'type' => AdvancedSearchElement\OptionalSelect::class,
+                'options' => [
+                    'label' => 'Site id', // @translate
+                    'value_options' => $availableFields,
+                    'empty_option' => 'None', // @translate
+                    'use_hidden_element' => true,
+                ],
+                'attributes' => [
+                    'required' => false,
+                    'class' => 'chosen-select',
+                ],
+            ])
+            ->add([
                 'name' => 'created',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Created', // @translate
                     'value_options' => $availableFields,
@@ -122,7 +136,7 @@ class ApiFormConfigFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'modified',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Modified', // @translate
                     'value_options' => $availableFields,
@@ -136,7 +150,7 @@ class ApiFormConfigFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'resource_class_label',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Resource class label', // @translate
                     'value_options' => $availableFields,
@@ -150,7 +164,7 @@ class ApiFormConfigFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'resource_class_id',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Resource class id', // @translate
                     'value_options' => $availableFields,
@@ -164,7 +178,7 @@ class ApiFormConfigFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'resource_template_id',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Resource template id', // @translate
                     'value_options' => $availableFields,
@@ -178,7 +192,7 @@ class ApiFormConfigFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'item_set_id',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Item set id', // @translate
                     'value_options' => $availableFields,
@@ -191,22 +205,8 @@ class ApiFormConfigFieldset extends Fieldset
                 ],
             ])
             ->add([
-                'name' => 'site_id',
-                'type' => OptionalSelect::class,
-                'options' => [
-                    'label' => 'Site id', // @translate
-                    'value_options' => $availableFields,
-                    'empty_option' => 'None', // @translate
-                    'use_hidden_element' => true,
-                ],
-                'attributes' => [
-                    'required' => false,
-                    'class' => 'chosen-select',
-                ],
-            ])
-            ->add([
                 'name' => 'is_open',
-                'type' => OptionalSelect::class,
+                'type' => AdvancedSearchElement\OptionalSelect::class,
                 'options' => [
                     'label' => 'Is open', // @translate
                     'value_options' => $availableFields,
@@ -255,7 +255,7 @@ class ApiFormConfigFieldset extends Fieldset
             // Mapping between source field (term) = field destination (search engine).
             ->add([
                 'name' => 'properties',
-                'type' => ArrayTextarea::class,
+                'type' => OmekaElement\ArrayTextarea::class,
                 'options' => [
                     'label' => 'Mapping between source (omeka) and destination (search engine)', // @translate
                     'as_key_value' => true,
@@ -270,7 +270,7 @@ class ApiFormConfigFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'available_properties',
-                'type' => ArrayTextarea::class,
+                'type' => OmekaElement\ArrayTextarea::class,
                 'options' => [
                     'label' => 'Available source fields for mapping', // @translate
                     'info' => 'List of all available properties to use above.', // @translate
@@ -285,7 +285,7 @@ class ApiFormConfigFieldset extends Fieldset
             ])
             ->add([
                 'name' => 'available_fields',
-                'type' => ArrayTextarea::class,
+                'type' => OmekaElement\ArrayTextarea::class,
                 'options' => [
                     'label' => 'Available destination fields for mapping', // @translate
                     'info' => 'List of all available fields to use above.', // @translate
@@ -307,7 +307,7 @@ class ApiFormConfigFieldset extends Fieldset
         $this
             ->add([
                 'name' => 'sort_fields',
-                'type' => ArrayTextarea::class,
+                'type' => OmekaElement\ArrayTextarea::class,
                 'options' => [
                     'label' => 'Sort (for internal use only, don’t modify it)', // @translate
                     'as_key_value' => false,
@@ -345,7 +345,7 @@ class ApiFormConfigFieldset extends Fieldset
         if (empty($searchAdapter)) {
             return [];
         }
-        $fields = $searchAdapter->getAvailableFields($searchEngine);
+        $fields = $searchAdapter->setSearchEngine($searchEngine)->getAvailableFields();
         foreach ($fields as $name => $field) {
             $options[$name] = $field['label'] ?? $name;
         }
@@ -361,7 +361,7 @@ class ApiFormConfigFieldset extends Fieldset
         if (empty($searchAdapter)) {
             return [];
         }
-        $fields = $searchAdapter->getAvailableSortFields($searchEngine);
+        $fields = $searchAdapter->setSearchEngine($searchEngine)->getAvailableSortFields();
         foreach ($fields as $name => $field) {
             $options[$name] = $field['label'] ?? $name;
         }
@@ -379,24 +379,21 @@ class ApiFormConfigFieldset extends Fieldset
     {
         static $properties;
 
-        if (isset($properties)) {
-            return $properties;
+        if (is_null($properties)) {
+            $qb = $this->connection->createQueryBuilder();
+            $qb
+                ->select(
+                    'CONCAT(vocabulary.prefix, ":", property.local_name) AS term',
+                    'property.id AS id'
+                )
+                ->from('property', 'property')
+                ->innerJoin('property', 'vocabulary', 'vocabulary', 'property.vocabulary_id = vocabulary.id')
+                ->orderBy('vocabulary.id', 'asc')
+                ->addOrderBy('property.id', 'asc')
+            ;
+            $properties = array_map('intval', $this->connection->executeQuery($qb)->fetchAllKeyValue());
         }
 
-        $qb = $this->connection->createQueryBuilder();
-        $qb
-            ->select([
-                'CONCAT(vocabulary.prefix, ":", property.local_name) AS term',
-                'property.id AS id',
-            ])
-            ->from('property', 'property')
-            ->innerJoin('property', 'vocabulary', 'vocabulary', 'property.vocabulary_id = vocabulary.id')
-            ->orderBy('vocabulary.id', 'asc')
-            ->addOrderBy('property.id', 'asc')
-            ->addGroupBy('property.id')
-        ;
-        $stmt = $this->connection->executeQuery($qb);
-        $properties = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
         return $properties;
     }
 

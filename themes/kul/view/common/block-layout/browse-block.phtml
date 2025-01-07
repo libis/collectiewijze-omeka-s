@@ -1,0 +1,100 @@
+<?php
+$translate = $this->plugin('translate');
+$plugins = $this->getHelperPluginManager();
+$assetUrl = $plugins->get('assetUrl');
+?>
+<style>
+  .card-img-top {
+    width: 100%;
+    height: 15vw;
+    object-fit: cover;
+    padding-top: 0%;
+  }
+</style>
+<section class="section">
+  <div class="container">
+  <?php if ($this->heading): ?>
+    <h2 class="title is-3 is-family-secondary"><?php echo $this->heading; ?></h2>
+  <?php endif; ?>
+
+  <?php if($block->dataValue('text') && $block->dataValue('columns') != 'col-md-6 kijker'):?>
+    <div class="content">
+      <?php echo $block->dataValue('text');?>
+    </div>
+  <?php endif; ?>
+
+  <?php if($this->resources):?>
+    <div class="row">
+  <?php if($block->dataValue('text') && $block->dataValue('columns') == 'col-md-6 kijker'):?>
+      <div class="content col-md-6">
+        <?php echo $block->dataValue('text');?>
+      </div>
+      <div class="col-md-6">
+        <div class="row">
+  <?php endif; ?>
+
+  <?php
+      $headingTerm = $this->siteSetting('browse_heading_property_term', 'dcterms:title');
+      $bodyTerm = $this->siteSetting('browse_body_property_term', 'dcterms:description');
+      foreach ($this->resources as $resource):
+        $heading = $resource->value($headingTerm, ['default' => $translate('[Untitled]')]);
+        $body = $resource->value('dcterms:description');
+        if($resourceType == 'item-set'):
+          $body = $resource->value('dcterms:description');
+        endif;
+        $type = $resource->resourceTemplate();
+        if($type):
+          $type= $type->label();
+        elseif($resourceType == 'item-set'):
+          $type= 'Collection';
+        else:
+          $type= "Object";
+        endif;
+
+        $mediaurl = "";
+        if($resourceType == 'item-set'):
+          $media = $resource->thumbnail();
+          if($media):
+            if(sizeof($this->resources) <= 2):
+              $mediaurl = str_replace('http:','',$media->assetUrl('large'));
+            else:
+              $mediaurl = str_replace('http:','',$media->assetUrl('medium'));
+            endif;
+          endif;
+        else:
+          $media = $resource->media();
+            if($media):
+              if(sizeof($this->resources) <= 2):
+                $mediaurl = str_replace('http:', '', $media[0]->thumbnailUrl('large'));
+              else:
+                $mediaurl = str_replace('http:', '', $media[0]->thumbnailUrl('medium'));
+              endif;
+            else:
+              $mediaurl = $assetUrl('thumbnails/default.png', 'Omeka', true); 
+            endif;
+        endif;
+        $url = $resource->url();
+    ?>
+
+          <div class="col-xs-12 <?php echo $block->dataValue('columns');?>" style="margin-bottom: 2%;">
+            <a href="<?php echo $url;?>" style="text-decoration: none;">
+              <div class="card-gray"><img alt="<?php echo $resource->displayTitle();?>" class="card-img-top img-fluid" src="<?php echo  $mediaurl;?>" />
+                <div class="card-block">
+                  <h4 class="card-tag"><?php echo $resource->displayTitle();?></h4>
+                </div>
+              </div>
+            </a>
+          </div>
+      <?php endforeach; ?>
+    <?php if($block->dataValue('text') && $block->dataValue('columns') == 'col-md-6 kijker'):?>
+        </div>
+      </div>
+    <?php endif;?>
+    </div>
+
+  <div class="text-center">
+    <a class="btn btn-primary" style="margin:3%;" href="/materialendatabank/s/tdc/find?sort=dcterms%3Adate+desc">Meer zoeken</a>
+  </div>
+  <?php endif;?>
+  </div> 
+</section>

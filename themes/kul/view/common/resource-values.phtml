@@ -2,8 +2,8 @@
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
 $labelInfo = $this->setting('property_label_information');
-$not = array('Title','Description','Is Version Of','Is Part Of','Language','Provenance');
-$notalt = array('Collectie ID','Referenties object','Beeld','Beeld copyright');
+$not = array('korte beschrijving','vindplaats','vindplaats Brussel');
+$notalt = array('korte beschrijving', 'Collectie ID','Referenties object','Beeld','Beeld copyright');
 ?>
 
 <?php foreach ($templateProperties as $term => $property): ?>
@@ -18,10 +18,12 @@ $notalt = array('Collectie ID','Referenties object','Beeld','Beeld copyright');
       continue;
     endif;
   ?>  
+
+
   <?php if(!in_array($propertyData['property']->label(),$not) && !in_array($propertyData['alternate_label'],$notalt)):?>
   <div class="row">
-    <div class="col-xs-12 col-md-4">
-      <h4 class="title is-6" style="font-size:0.9rem;padding-top:0.3rem;padding-bottom:0.3rem;line-height: 1.6;">
+    <div class="col-xs-12 col-md-3">
+      <h4 class="title is-6" style="font-size:0.9rem;padding-top:0.3rem;padding-bottom:0.3rem;line-height: 1.6;padding-left:10%;<?php if($propertyData['alternate_label'] == 'bijkomende info'):?>margin-left:5%;<?php endif?>">
       <?php if ($propertyData['alternate_label']): ?>
       <?php echo $escape($propertyData['alternate_label']); ?>
       <?php else: ?>
@@ -34,9 +36,15 @@ $notalt = array('Collectie ID','Referenties object','Beeld','Beeld copyright');
       <?php endif; ?>
       </h4>
     </div>
-    <div class="col-xs-12 col-md-8">
-      <div class="values" style="font-size:0.9rem;padding-top:0.3rem;padding-bottom:0.3rem;line-height: 1.6;">
-      <?php $i=0;?>
+    <div class="col-xs-12 col-md-9">
+      <div class="values" style="font-size:0.9rem;padding-top:0.3rem;padding-bottom:0.3rem;padding-right:3%;padding-left:1%;line-height: 1.6;">
+      <?php $i=0;
+      $g=0;
+      if($propertyData['property']->label() == 'staalnummer(s)'):
+      ?>
+      <div class="row">
+        <div class="col-2">
+      <?php endif;?>
       <?php foreach ($propertyData['values'] as $value): ?>
           <?php
           $valueType = $value->type();
@@ -51,20 +59,69 @@ $notalt = array('Collectie ID','Referenties object','Beeld','Beeld copyright');
               $class[] = 'private';
           }
           ?>
+            <?php if($g > 4):?>
+            </div>
+            <div class="col-2">
+              <?php 
+            $g = 0;
+            endif;?>
 
             <div class="<?php echo implode(' ', $class); ?>" lang="<?php echo $escape($value->lang()); ?>">
                 <?php if ($language = $value->lang()): ?>
                 <span class="language"><?php echo $language; ?></span>
                 <?php endif; ?>
-
-                <?php if($propertyData['alternate_label'] == 'Thema'):?>
-                  <a target="_blank" href="/nl/item-set?fulltext_search=&property[0][joiner]=and&property[0][property]=8&property[0][type]=eq&property[0][text]=<?php echo $value->asHtml(); ?>&resource_class_id[]=&resource_template_id[]=&submit=Zoeken"><?php echo $value->asHtml(); ?></a>
-                <?php elseif($propertyData['alternate_label'] == 'Department/Research/Group/Unit'):?>                  
-                  <a href="<?php echo '/herkul/s/en/find?q=&facet[schema:subOrganization][0]='.$value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
-                 <?php elseif($propertyData['alternate_label'] == 'Faculty'):?>                  
-                  <a href="<?php echo '/herkul/s/en/find?q=&facet[schema:parentOrganization][0]='.$value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
-                <?php elseif($propertyData['alternate_label'] == 'Research keywords'):?>                  
-                  <a href="<?php echo '/herkul/s/en/find?q=&facet[schema:keywords][0]='.$value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                <?php if($propertyData['property']->label() == 'staalnummer(s)'):
+                $g++;
+                echo $value->asHtml();
+                ?>
+                <?php elseif($propertyData['property']->label() == 'categorie'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:categorie][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                <?php elseif($propertyData['property']->label() == 'materiaalsoort'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:materiaalsoort][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                <?php elseif($propertyData['property']->label() == 'toepassingen'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:toepassingen][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                <?php elseif($propertyData['property']->label() == 'samenstelling'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:samenstelling][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                <?php elseif($propertyData['property']->label() == 'gerecycleerde grondstof'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:gerecycleerdeGrondstof][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                <?php elseif($propertyData['property']->label() == 'duurzaamheidslabel(s)'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:duurzaamheidslabel][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                <?php elseif($propertyData['property']->label() == 'levenscyclus - oorsprong'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:levenscyclusOorsprong][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                <?php elseif($propertyData['property']->label() == 'waterafstotend'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:waterafstotend][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                <?php elseif($propertyData['property']->label() == 'akoestisch - absorberend'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:akoestischAbsorberend][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'akoestisch - isolerend'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:akoestischIsolerend][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'elektrische weerstand'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:elektrischeWeerstand][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'optisch - lichtreflectie'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:optischLichtreflectie][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'optisch - transparantie'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:optischTransparantie][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'UV-bestendig'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:uvbestendig][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'levenscyclus - afvalfase'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:levenscyclusAfvalfase][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'EPD (Environmental Product Declaration)'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:epd][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'insectenbestendig'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:insectenbestendig][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'krasbestendig'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:krasbestendig][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'chemisch bestendig'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:chemischbestendig][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'corrosiebestendig'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:corrosiebestendig][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'vorstbestendig'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:vorstbestendig][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'vochtbestendig'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:vochtbestendig][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'schimmelbestendig'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:schimmelbestendig][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
+                  <?php elseif($propertyData['property']->label() == 'brandvertragend'):?>
+                  <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:brandvertragend][]=<?php echo $value->asHtml(); ?>"><?php echo $value->asHtml(); ?></a>
                 <?php else:?>
                   <?php echo $value->asHtml(); ?>
                 <?php endif;?>
@@ -72,6 +129,12 @@ $notalt = array('Collectie ID','Referenties object','Beeld','Beeld copyright');
             <?php $i++;?>
       <?php endforeach; ?>
       </div>
+      <?php
+      if($propertyData['property']->label() == 'staalnummer(s)'):
+      ?>
+    </div>
+      </div>
+      <?php endif;?>
     </div>
   </div>
   <?php endif;?>

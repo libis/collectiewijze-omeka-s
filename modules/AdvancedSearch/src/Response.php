@@ -30,7 +30,7 @@
 
 namespace AdvancedSearch;
 
-use \Omeka\Api\Manager as ApiManager;
+use Omeka\Api\Manager as ApiManager;
 
 /**
  * @todo Manage resources as a whole with a global order.
@@ -66,6 +66,14 @@ class Response implements \JsonSerializable
      * @var array
      */
     protected $results = [];
+
+    /**
+     * List of result ids for all pages, if stored by the querier.
+     * @todo Inverse process: manage output as a whole and if needed, order it by type.
+     *
+     * @var array
+     */
+    protected $allResouceIdsByResourceType = [];
 
     /**
      * @var array
@@ -191,6 +199,59 @@ class Response implements \JsonSerializable
         return is_null($resourceType)
             ? $this->results
             : $this->results[$resourceType] ?? [];
+    }
+
+    /**
+     * Store all results ids for all resources, by type.
+     *
+     * @internal Currently experimental.
+     */
+    public function setAllResourceIdsByResourceType(array $idsByResourceType): self
+    {
+        foreach ($idsByResourceType as &$values) {
+            $values = array_values($values);
+        }
+        $this->allResouceIdsByResourceType = $idsByResourceType;
+        return $this;
+    }
+
+    /**
+     * Store all results ids for a resource type.
+     *
+     * @param string|null $resourceType The resource type ("items", "item_sets"…).
+     * @param int[] $ids
+     * @internal Currently experimental.
+     */
+    public function setAllResourceIdsForResourceType(string $resourceType, array $ids): self
+    {
+        $this->allResouceIdsByResourceType[$resourceType] = array_values($ids);
+        return $this;
+    }
+
+    /**
+     * Get resources ids for a resource type or all resource types.
+     *
+     * @param string|null $resourceType The resource type ("items", "item_sets"…).
+     * @param bool $byResourceType Merge ids or not.
+     * @return int[]
+     * @internal Currently experimental.
+     * @todo Return ids directly with array_column() in the response or include it by default.
+     */
+    public function getResourceIds(string $resourceType = null, bool $byResourceType = false): array
+    {
+        if (!count($this->allResouceIdsByResourceType)) {
+            foreach (array_keys($this->results) as $resourceType) {
+                $this->allResouceIdsByResourceType[$resourceType] = array_column($this->getResults($resourceType), 'id');
+            }
+        }
+
+        if ($byResourceType && !$resourceType) {
+            return $this->allResouceIdsByResourceType;
+        }
+
+        return $resourceType
+            ? $this->allResouceIdsByResourceType[$resourceType] ?? []
+            : array_merge(...array_values($this->allResouceIdsByResourceType));
     }
 
     /**

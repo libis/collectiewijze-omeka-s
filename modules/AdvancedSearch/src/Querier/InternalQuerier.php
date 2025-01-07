@@ -10,8 +10,8 @@ use Omeka\Stdlib\Message;
 class InternalQuerier extends AbstractQuerier
 {
     /**
-     * MariaDB can only use 61 tables in a join and Omeka adds a join for each
-     * property. To manage modules, the number is limited to 50.
+     * MariaDB can only use 61 tables in a join but Omeka adds a join for each
+     * property. So, to manage modules, the number is limited to 50 here.
      */
     const REQUEST_MAX_ARGS = 50;
 
@@ -60,6 +60,8 @@ class InternalQuerier extends AbstractQuerier
         $offset = empty($dataQuery['offset']) ? 0 : (int) $dataQuery['offset'];
         unset($dataQuery['limit'], $dataQuery['offset']);
 
+        // TODO Inverse logic: search all resources (store id and type), and return by type only when needed (rarely).
+
         foreach ($this->resourceTypes as $resourceType) {
             try {
                 // Return scalar doesn't allow to get the total of results.
@@ -69,6 +71,8 @@ class InternalQuerier extends AbstractQuerier
                 $apiResponse = $api->search($resourceType, $dataQuery, ['returnScalar' => 'id']);
                 $totalResults = $apiResponse->getTotalResults();
                 $result = $apiResponse->getContent();
+                // TODO Currently experimental. To replace by a query + arg "querier=internal".
+                $this->response->setAllResourceIdsForResourceType($resourceType, array_map('intval', $result) ?: []);
                 if ($result && ($offset || $limit)) {
                     $result = array_slice($result, $offset, $limit ?: null);
                     // $apiResponse->setContent($result);
@@ -87,9 +91,8 @@ class InternalQuerier extends AbstractQuerier
             $this->response->addResults($resourceType, $result);
         }
 
-        $this->response->setTotalResults(
-            array_sum($this->response->getResourceTotalResults())
-        );
+        $totalResults = array_sum($this->response->getResourceTotalResults());
+        $this->response->setTotalResults($totalResults);
 
         if ($hasReferences) {
             $this->fillFacetResponse();
@@ -161,10 +164,8 @@ LIMIT :limit
 SQL;
 
         try {
-            $results = $connection
-                ->executeQuery($sql, $bind, $types)
-                ->fetchAll();
-        } catch (\Doctrine\DBAL\DBALException $e) {
+            $results = $connection->executeQuery($sql, $bind, $types)->fetchAllAssociative();
+        } catch (\Exception $e) {
             $this->logger->err($e->getMessage());
             return $this->response
                 ->setMessage('An internal issue in database occurred.'); // @translate
@@ -347,10 +348,8 @@ SQL;
         }
 
         try {
-            $results = $connection
-                ->executeQuery($sql, $bind, $types)
-                ->fetchAll();
-        } catch (\Doctrine\DBAL\DBALException $e) {
+            $results = $connection->executeQuery($sql, $bind, $types)->fetchAllAssociative();
+        } catch (\Doctrine\DBAL\Exception $e) {
             $this->logger->err($e->getMessage());
             return $this->response
                 ->setMessage('An internal issue in database occurred.'); // @translate
@@ -514,9 +513,6 @@ SQL;
             $q = trim($q, '" ');
         }
 
-        pmd(['ici' => $this->engine->settings()]);
-        //         if ($this->getSubSetting('default', ));
-
         if ($this->engine->settingAdapter('default_search_partial_word', false)) {
             $this->args['property'][] = [
                 'joiner' => 'and',
@@ -546,13 +542,18 @@ SQL;
         // Don't use excluded fields for filters.
         $this->filterQueryValues($this->query->getFilters());
 
+        $multifields = $this->engine->settingAdapter('multifields', []);
+
         $dateRangeFilters = $this->query->getDateRangeFilters();
-        foreach ($dateRangeFilters as $name => $filterValues) {
-            if ($name === 'created' || $name === 'modified') {
+        foreach ($dateRangeFilters as $field => $filterValues) {
+            if ($field === 'created' || $field === 'modified') {
                 $argName = 'datetime';
             } else {
-                $name = $this->underscoredNameToTerm($name);
-                if (!$name) {
+                $field = $this->getPropertyTerm($field)
+                    ?? $multifields[$field]['fields']
+                    ?? $this->underscoredNameToTerm($field)
+                    ?? null;
+                if (!$field) {
                     continue;
                 }
                 $argName = 'property';
@@ -561,7 +562,7 @@ SQL;
                 if (strlen($filterValue['from'])) {
                     $this->args[$argName][] = [
                         'joiner' => 'and',
-                        'property' => $name,
+                        'property' => $field,
                         'type' => 'gte',
                         'text' => $filterValue['from'],
                     ];
@@ -569,7 +570,7 @@ SQL;
                 if (strlen($filterValue['to'])) {
                     $this->args[$argName][] = [
                         'joiner' => 'and',
-                        'property' => $name,
+                        'property' => $field,
                         'type' => 'lte',
                         'text' => $filterValue['to'],
                     ];
@@ -578,15 +579,18 @@ SQL;
         }
 
         $filters = $this->query->getFilterQueries();
-        foreach ($filters as $name => $values) {
-            $name = $this->underscoredNameToTerm($name);
-            if (!$name) {
+        foreach ($filters as $field => $values) {
+            $field = $this->getPropertyTerm($field)
+                ?? $multifields[$field]['fields']
+                ?? $this->underscoredNameToTerm($field)
+                ?? null;
+            if (!$field) {
                 continue;
             }
             foreach ($values as $value) {
                 $this->args['property'][] = [
                     'joiner' => $value['join'],
-                    'property' => $name,
+                    'property' => $field,
                     'type' => $value['type'],
                     'text' => $value['value'],
                 ];
@@ -600,69 +604,82 @@ SQL;
 
     protected function filterQueryValues(array $filters, bool $inList = false): void
     {
-        foreach ($filters as $name => $values) {
-            switch ($name) {
+        $multifields = $this->engine->settingAdapter('multifields', []);
+
+        $flatArray = function ($values): array {
+            if (!is_array($values)) {
+                return [$values];
+            } elseif (is_array(reset($values))) {
+                return array_merge(...$values);
+            }
+            return $values;
+        };
+
+        // Empty values are already filtered by the form adapter.
+        foreach ($filters as $field => $values) {
+            switch ($field) {
+                // "resource_type" is used externally and "resource_name" internally.
+                case 'resource_name':
+                case 'resource_type':
+                    $this->args['resource_name'] = $flatArray($values);
+                    continue 2;
+
                 // "is_public" is automatically managed by this internal adapter
                 // TODO Improve is_public to search public/private only.
                 case 'is_public':
-                case 'is_public_field':
                     continue 2;
 
                 case 'id':
-                    if (!is_array($values)) {
-                        $values = [$values];
-                    } elseif (is_array(reset($values))) {
-                        $values = array_merge(...$values);
-                    }
-                    $this->args['id'] = array_filter(array_map('intval', $values));
+                    $this->args['id'] = array_filter(array_map('intval', $flatArray($values)));
                     continue 2;
 
-                case 'item_set_id':
-                case 'item_set_id_field':
-                    if (!is_array($values)) {
-                        $values = [$values];
-                    } elseif (is_array(reset($values))) {
-                        $values = array_merge(...$values);
-                    }
-                    $this->args['item_set_id'] = array_filter(array_map('intval', $values));
+                case 'owner_id':
+                    $values = $flatArray($values);
+                    $this->args['owner_id'] = is_numeric(reset($values))
+                        ? array_filter(array_map('intval', $values))
+                        : $this->listUserIds($values);
+                    continue 2;
+
+                case 'site_id':
+                    $values = $flatArray($values);
+                    $this->args['site_id'] = is_numeric(reset($values))
+                        ? array_filter(array_map('intval', $values))
+                        : $this->listSiteIds($values);
                     continue 2;
 
                 case 'resource_class_id':
-                case 'resource_class_id_field':
-                    if (!is_array($values)) {
-                        $values = [$values];
-                    } elseif (is_array(reset($values))) {
-                        $values = array_merge(...$values);
-                    }
+                    $values = $flatArray($values);
                     $this->args['resource_class_id'] = is_numeric(reset($values))
                         ? array_filter(array_map('intval', $values))
                         : $this->listResourceClassIds($values);
                     continue 2;
 
                 case 'resource_template_id':
-                case 'resource_template_id_field':
-                    if (!is_array($values)) {
-                        $values = [$values];
-                    } elseif (is_array(reset($values))) {
-                        $values = array_merge(...$values);
-                    }
+                    $values = $flatArray($values);
                     $this->args['resource_template_id'] = is_numeric(reset($values))
                         ? array_filter(array_map('intval', $values))
                         : $this->listResourceTemplateIds($values);
                     continue 2;
 
+                case 'item_set_id':
+                    $this->args['item_set_id'] = array_filter(array_map('intval', $flatArray($values)));
+                    continue 2;
+
                 default:
-                    $name = $this->underscoredNameToTerm($name);
-                    if (!$name) {
+                    $field = $this->getPropertyTerm($field)
+                        ?? $multifields[$field]['fields']
+                        ?? $this->underscoredNameToTerm($field)
+                        ?? null;
+                    if (!$field) {
                         break;
                     }
                     // "In list" is used for facets.
                     if ($inList) {
                         $this->args['property'][] = [
                             'joiner' => 'and',
-                            'property' => $name,
+                            'property' => $field,
                             'type' => 'list',
-                            'text' => is_array($values) ? $values : [$values],
+                            'text' => $flatArray($values),
                         ];
                         break;
                     }
@@ -670,14 +687,14 @@ SQL;
                         if (is_array($value)) {
                             $this->args['property'][] = [
                                 'joiner' => 'and',
-                                'property' => $name,
+                                'property' => $field,
                                 'type' => 'list',
                                 'text' => $value,
                             ];
                         } else {
                             $this->args['property'][] = [
                                 'joiner' => 'and',
-                                'property' => $name,
+                                'property' => $field,
                                 'type' => 'eq',
                                 'text' => $value,
                             ];
@@ -707,7 +724,7 @@ SQL;
             return $name;
         }
 
-        // A common name.
+        // A common name for Omeka resources.
         if ($name === 'title') {
             return 'dcterms:title';
         }
@@ -723,6 +740,10 @@ SQL;
             : null;
     }
 
+    /**
+     * @todo Factorize with \AdvancedSearch\Form\MainSearchForm::listValuesForProperty()
+     * @see \AdvancedSearch\Form\MainSearchForm::listValuesForProperty()
+     */
     protected function fillFacetResponse(): void
     {
         $this->response->setActiveFacets($this->query->getActiveFacets());
@@ -736,20 +757,26 @@ SQL;
         $facetLanguages = $this->query->getFacetLanguages();
 
         $metadataFieldsToNames = [
+            'resource_name' => 'resource_type',
+            'resource_type' => 'resource_type',
             'is_public' => 'is_public',
-            'is_public_field' => 'is_public',
-            'item_set_id' => 'o:item_set',
-            'item_set_id_field' => 'o:item_set',
+            'owner_id' => 'o:owner',
+            'site_id' => 'o:site',
             'resource_class_id' => 'o:resource_class',
-            'resource_class_id_field' => 'o:resource_class',
             'resource_template_id' => 'o:resource_template',
-            'resource_template_id_field' => 'o:resource_template',
+            'item_set_id' => 'o:item_set',
         ];
 
+        // Convert multi-fields into a list of property terms.
         // Normalize search query keys as omeka keys for items and item sets.
-        $fields = array_combine($facetFields, array_map(function ($v) use ($metadataFieldsToNames) {
-            return $metadataFieldsToNames[$v] ?? $v;
-        }, $facetFields));
+        $multifields = $this->engine->settingAdapter('multifields', []);
+        $fields = [];
+        foreach ($facetFields as $facetField) {
+            $fields[$facetField] = $metadataFieldsToNames[$facetField]
+                ?? $this->getPropertyTerm($facetField)
+                ?? $multifields[$facetField]['fields']
+                ?? $facetField;
+        }
 
         // Facet counts don't make a distinction by resource type, so they
         // should be merged here. This is needed as long as there is no single
@@ -804,27 +831,107 @@ SQL;
             ];
 
             $values = $references
-                ->setMetadata(array_values($fields))
+                ->setMetadata($fields)
                 ->setQuery($facetData)
                 ->setOptions($options)
                 ->list();
 
-            foreach ($facetFields as $facetField) {
-                foreach ($values[$fields[$facetField]]['o:references'] ?? [] as $value => $count) {
-                    empty($facetCountsByField[$facetField][$value])
-                        ? $facetCountsByField[$facetField][$value] = [
+            foreach (array_keys($fields) as $facetField) {
+                foreach ($values[$facetField]['o:references'] ?? [] as $value => $count) {
+                    if (empty($facetCountsByField[$facetField][$value])) {
+                        $facetCountsByField[$facetField][$value] = [
                             'value' => $value,
                             'count' => $count,
-                        ]
-                        : $facetCountsByField[$facetField][$value] = [
+                        ];
+                    } else {
+                        $facetCountsByField[$facetField][$value] = [
                             'value' => $value,
                             'count' => $count + $facetCountsByField[$facetField][$value]['count'],
                         ];
+                    }
                 }
             }
         }
 
         $this->response->setFacetCounts(array_map('array_values', $facetCountsByField));
+    }
+
+    /**
+     * Convert a list of site slug into a list of site ids.
+     *
+     * @param array $values
+     * @return array Only values that are slugs are converted into ids, the
+     * other ones are removed.
+     */
+    protected function listSiteIds(array $values): array
+    {
+        return array_values(array_intersect_key($this->getSiteIds(), array_fill_keys($values, null)));
+    }
+
+    /**
+     * Get all site ids by slug.
+     *
+     * @return array Associative array of ids by slug.
+     */
+    protected function getSiteIds(): array
+    {
+        static $sites;
+
+        if (is_null($sites)) {
+            /** @var \Doctrine\DBAL\Connection $connection */
+            $connection = $this->services->get('Omeka\Connection');
+            $qb = $connection->createQueryBuilder();
+            $qb
+                ->select(
+                    'site.slug AS slug',
+                    'site.id AS id'
+                )
+                ->from('site', 'site')
+                ->orderBy('id', 'asc')
+            ;
+            $sites = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
+        }
+
+        return $sites;
+    }
+
+    /**
+     * Convert a list of user names into a list of ids.
+     *
+     * @param array $values
+     * @return array Only values that are user name are converted into ids, the
+     * other ones are removed.
+     */
+    protected function listUserIds(array $values): array
+    {
+        return array_values(array_intersect_key($this->getUserIds(), array_fill_keys($values, null)));
+    }
+
+    /**
+     * Get all user ids by name.
+     *
+     * @return array Associative array of ids by user name.
+     */
+    protected function getUserIds(): array
+    {
+        static $users;
+
+        if (is_null($resourceTemplates)) {
+            /** @var \Doctrine\DBAL\Connection $connection */
+            $connection = $this->services->get('Omeka\Connection');
+            $qb = $connection->createQueryBuilder();
+            $qb
+                ->select(
+                    'user.name AS name',
+                    'user.id AS id'
+                )
+                ->from('user', 'user')
+                ->orderBy('id', 'asc')
+            ;
+            $users = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
+        }
+
+        return $users;
     }
 
     /**
@@ -839,20 +946,30 @@ SQL;
             $connection = $this->services->get('Omeka\Connection');
             $qb = $connection->createQueryBuilder();
             $qb
-                ->select([
+                ->select(
                     'vocabulary.id AS id',
-                    'vocabulary.prefix AS prefix',
-                ])
+                    'vocabulary.prefix AS prefix'
+                )
                 ->from('vocabulary', 'vocabulary')
                 ->orderBy('vocabulary.id)', 'ASC')
             ;
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $vocabularies = $stmt->fetchAll(\Doctrine\DBAL\FetchMode::COLUMN);
-            $vocabularies = array_column($vocabularies, 'prefix', 'id');
+            $vocabularies = $connection->executeQuery($qb)->fetchAllKeyValue();
         }
 
         return $vocabularies;
+    }
+
+    /**
+     * Check a property term or id.
+     *
+     * @see \BulkImport\Mvc\Controller\Plugin\Bulk::getPropertyTerm()
+     */
+    protected function getPropertyTerm($termOrId): ?string
+    {
+        $ids = $this->getPropertyIds();
+        return is_numeric($termOrId)
+            ? (array_search($termOrId, $ids) ?: null)
+            : (array_key_exists($termOrId, $ids) ? $termOrId : null);
     }
 
     /**
@@ -862,45 +979,11 @@ SQL;
      *
      * @param array $values
      * @return array Only values that are terms are converted into ids, the
-     * other are removed.
+     * other ones are removed.
      */
     protected function listPropertyIds(array $values): array
     {
         return array_intersect_key($this->getPropertyIds(), array_fill_keys($values, null));
-    }
-
-    /**
-     * Get all property terms by id, ordered by descendant total values.
-     *
-     * @return array Associative array of ids by term.
-     */
-    protected function getUsedPropertyByIds(): array
-    {
-        static $properties;
-
-        if (is_null($properties)) {
-            /** @var \Doctrine\DBAL\Connection $connection */
-            $connection = $this->services->get('Omeka\Connection');
-            $qb = $connection->createQueryBuilder();
-            $qb
-            ->select([
-                'DISTINCT property.id AS id',
-                "CONCAT(vocabulary.prefix, ':', property.local_name) AS term",
-                // 'COUNT(value.id) AS total',
-            ])
-            ->from('property', 'property')
-            ->innerJoin('property', 'vocabulary', 'vocabulary', 'property.vocabulary_id = vocabulary.id')
-            ->innerJoin('property', 'value', 'value', 'property.id = value.property_id')
-            ->addGroupBy('id')
-            ->orderBy('COUNT(value.id)', 'DESC')
-            ;
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $properties = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $properties = array_column($properties, 'term', 'id');
-        }
-
-        return $properties;
     }
 
     /**
@@ -918,20 +1001,25 @@ SQL;
         if (is_null($properties)) {
             /** @var \Doctrine\DBAL\Connection $connection */
             $connection = $this->services->get('Omeka\Connection');
+            // For big databases, manage used properties separately.
+            $subQb = $connection->createQueryBuilder();
+            $subQb
+                ->select('DISTINCT property_id')
+                ->from('value', 'value')
+            ;
             $qb = $connection->createQueryBuilder();
             $qb
-                ->select([
-                    "CONCAT(vocabulary.prefix, '_', property.local_name) AS key",
-                    "CONCAT(vocabulary.prefix, ':', property.local_name) AS term",
-                ])
+                ->select(
+                    'CONCAT(vocabulary.prefix, "_", property.local_name) AS "key"',
+                    'CONCAT(vocabulary.prefix, ":", property.local_name) AS "term"'
+                )
                 ->from('property', 'property')
                 ->innerJoin('property', 'vocabulary', 'vocabulary', 'property.vocabulary_id = vocabulary.id')
-                ->innerJoin('property', 'value', 'value', 'property.id = value.property_id')
+                // Overflow on big databases, so use subquery.
+                // ->innerJoin('property', 'value', 'value', 'property.id = value.property_id')
+                ->where('property.id IN (' . $subQb . ')')
             ;
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $properties = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $properties = array_column($properties, 'term', 'key');
+            $properties = $connection->executeQuery($qb)->fetchAllKeyValue();
         }
 
         return $properties;
@@ -953,19 +1041,16 @@ SQL;
             $connection = $this->services->get('Omeka\Connection');
             $qb = $connection->createQueryBuilder();
             $qb
-                ->select([
+                ->select(
                     'CONCAT(vocabulary.prefix, ":", property.local_name) AS term',
-                    'property.id AS id',
-                ])
+                    'property.id AS id'
+                )
                 ->from('property', 'property')
                 ->innerJoin('property', 'vocabulary', 'vocabulary', 'property.vocabulary_id = vocabulary.id')
                 ->orderBy('vocabulary.id', 'asc')
                 ->addOrderBy('property.id', 'asc')
-                ->addGroupBy('property.id')
             ;
-            $stmt = $connection->executeQuery($qb);
-            $properties = $stmt->fetchAll(\PDO::FETCH_KEY_PAIR);
-            $properties = array_map('intval', $properties);
+            $properties = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
         }
 
         return $properties;
@@ -978,7 +1063,7 @@ SQL;
      *
      * @param array $values
      * @return array Only values that are terms are converted into ids, the
-     * other are removed.
+     * other ones are removed.
      */
     protected function listResourceClassIds(array $values): array
     {
@@ -1001,17 +1086,15 @@ SQL;
             $connection = $this->services->get('Omeka\Connection');
             $qb = $connection->createQueryBuilder();
             $qb
-                ->select([
-                    "CONCAT(vocabulary.prefix, ':', resource_class.local_name) AS term",
-                    'resource_class.id AS id',
-                ])
+                ->select(
+                    'CONCAT(vocabulary.prefix, ":", resource_class.local_name) AS term',
+                    'resource_class.id AS id'
+                )
                 ->from('resource_class', 'resource_class')
                 ->innerJoin('resource_class', 'vocabulary', 'vocabulary', 'resource_class.vocabulary_id = vocabulary.id')
+                ->orderBy('term', 'asc')
             ;
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $resourceClasses = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $resourceClasses = array_map('intval', array_column($resourceClasses, 'id', 'term'));
+            $resourceClasses = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
         }
 
         return $resourceClasses;
@@ -1022,7 +1105,7 @@ SQL;
      *
      * @param array $values
      * @return array Only values that are labels are converted into ids, the
-     * other are removed.
+     * other ones are removed.
      */
     protected function listResourceTemplateIds(array $values): array
     {
@@ -1043,16 +1126,14 @@ SQL;
             $connection = $this->services->get('Omeka\Connection');
             $qb = $connection->createQueryBuilder();
             $qb
-                ->select([
+                ->select(
                     'resource_template.label AS label',
-                    'resource_template.id AS id',
-                ])
+                    'resource_template.id AS id'
+                )
                 ->from('resource_template', 'resource_template')
+                ->orderBy('id', 'asc')
             ;
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $resourceTemplates = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $resourceTemplates = array_map('intval', array_column($resourceTemplates, 'id', 'label'));
+            $resourceTemplates = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
         }
 
         return $resourceTemplates;

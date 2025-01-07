@@ -34,11 +34,22 @@ $gridListMode = $searchPage ? $searchPage->subSetting('display', 'grid_list_mode
 
 $defaultThumbnail = '<img src="' . $assetUrl('thumbnails/default.png', 'Omeka', true) . '" title="' . $translate('No media') . '"/>';
 ?>
-
-<?php if ($title): ?>
+<style>
+  .card-img-top {
+    width: 100%;
+    height: 15vw;
+    object-fit: cover;
+    padding-top: 0%;
+    border-radius: unset;
+}
+a, a:hover, a:focus {
+    text-decoration: none;
+}
+</style>
+<!-- <?php if ($title): ?>
 <h3><?= $escape($title) ?></h3>
-<?php endif; ?>
-<ul class="resource-list search-results-list<?= $gridListMode === 'list_only' ? ' list' : ($gridListMode === 'grid_only' ? ' grid' : '') ?>">
+<?php endif; ?> -->
+<!-- <ul class="resource-list search-results-list<?= $gridListMode === 'list_only' ? ' list' : ($gridListMode === 'grid_only' ? ' grid' : '') ?>">
     <?php /** @var \Omeka\Api\Representation\AbstractResourceEntityRepresentation $resource */
     foreach ($resources as $resource):
         $resourceType = $resource->resourceName();
@@ -48,6 +59,7 @@ $defaultThumbnail = '<img src="' . $assetUrl('thumbnails/default.png', 'Omeka', 
         $heading = $heading ? $heading->asHtml() : $escape($resource->displayTitle($translate('[Untitled]'), $lang));
         $body = $bodyTerm ? $resource->value($bodyTerm, ['lang' => $langValue]) : null;
         $body = $body ? $body->asHtml() : $escape($resource->displayDescription(null, $lang));
+
     ?>
 
     <li class="resource <?= $resourceType ?>">
@@ -63,4 +75,34 @@ $defaultThumbnail = '<img src="' . $assetUrl('thumbnails/default.png', 'Omeka', 
     </li>
 
     <?php endforeach; ?>
-</ul>
+</ul> -->
+<div class="card-deck">
+<?php /** @var \Omeka\Api\Representation\AbstractResourceEntityRepresentation $resource */
+    foreach ($resources as $resource):
+        $resourceType = $resource->resourceName();
+        $media = $resource->primaryMedia();
+        $thumbnail = $media ? $thumbnailHelper($media, 'medium') : $defaultThumbnail;
+        $heading = $headingTerm ? $resource->value($headingTerm, ['lang' => $langValue]) : null;
+        $heading = $heading ? $heading->asHtml() : $escape($resource->displayTitle($translate('[Untitled]'), $lang));
+        $body = $bodyTerm ? $resource->value($bodyTerm, ['lang' => $langValue]) : null;
+        $body = $body ? $body->asHtml() : $escape($resource->displayDescription(null, $lang));
+        $url = $resource->url();
+        $thumbnails = $resource->media();
+        $thumbnailUrl = '' . $assetUrl('thumbnails/default.png', 'Omeka', true) . '';
+        if ($thumbnails):
+            $thumbnailUrl = str_replace('http:', '', $thumbnails[0]->thumbnailUrl('square'));
+        endif;
+    ?>
+<div class="col-md-6 col-lg-3" style="padding-bottom:1%;">
+<a href="<?php echo $url;?>">
+  <div class="card-secondary">
+  <div class="card-text" style="padding:5%;">
+      <h4 class="card-tag text-center"><?php echo $heading;?></h4>
+    </div>
+  <img class="card-img-top img-fluid" src="<?php echo  $thumbnailUrl;?>" alt="<?php echo $heading;?>">
+  </div>
+</a>
+</div>
+<?php endforeach; ?>
+</div>
+

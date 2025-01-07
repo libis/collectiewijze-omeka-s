@@ -1,31 +1,48 @@
 <?php
 $translate = $this->plugin('translate');
+$alleToepassingen = array('onderbouw','draagstructuur','isolatie (thermisch)','isolatie (akoestisch)','ventilatie','constructie - wand', 'constructie - vloer', 'constructie - dak', 'afwerking - wand (binnen)','afwerking - wand (buiten)','afwerking - vloer','afwerking - plafond','afwerking - coatings','afwerking - dak','binnenschrijnwerk','buitenschrijnwerk','inrichting - meubilair','inrichting - textiel','bevestiging- en verwerkingsmateriaal','verwarming en koeling','elektriciteit','sanitair');
+$alleCategorie = array('hout','metaal','kunststof','textiel','glas','steen (incl. kunststeen en beton)','ander organisch','composiet');
 ?>
-<div class="item-with-metadata">
-<?php foreach($attachments as $attachment): ?>
-    <?php $item = $attachment->item(); ?>
-    <?php if (empty($item)) continue; ?>
-    <div class="resource show">
-    <?php echo $item->displayValues(); ?>
-    <?php if($item->itemSets()): ?>
-        <div class="property">
-            <h4><?php echo $translate('Item sets'); ?></h4>
-            <?php foreach ($item->itemSets() as $itemSet): ?>
-            <div class="value"><?php echo $itemSet->link($itemSet->displayTitle()); ?></div>
-            <?php endforeach; ?>
+<section>
+    <div class="container">
+        <div class="row">
+            <div class="<?php echo $this->column; ?>">
+            <h2 class="title is-3 is-family-secondary">Materiaalfamilie</h2>
+            <div class="card card-gray item-with-metadata">
+
+                    <div class="media-list" style="padding:5%;">
+                <?php
+                foreach ($alleCategorie as $categie):
+                $png = "img/" . $categie . ".png";
+                ?>
+                        <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:categorie][]=<?php echo $categie;?>" data-toggle="tooltip" title="<?php echo $categie;?>" class="badge btn-primary">
+                            <img src="<?php echo $this->assetUrl($png);?>">
+                        </a>
+                <?php endforeach;
+                ?>
+                    </div>
+
+            </div>
+            </div>
+            <?php if ($this->column === 'col-md-6'): ?>
+            <div class="<?php echo $this->column; ?>">
+            <h2 class="title is-3 is-family-secondary">Toepassing</h2>
+            <div class="item-with-metadata card card-gray">
+
+                    <div class="media-list" style="padding:5%;">
+                <?php
+                foreach ($alleToepassingen as $toep):
+                $png = "img/" . $toep . ".png";
+                ?>
+                        <a target="_blank" href="/materialendatabank/s/tdc/find?facet[tdc:toepassingen][]=<?php echo $toep;?>" data-toggle="tooltip" title="<?php echo $toep;?>" class="badge btn-primary">
+                            <img style="width: 40px;height: 40px;" src="<?php echo $this->assetUrl($png);?>">
+                        </a>
+                <?php endforeach;
+                ?>
+                    </div>
+            </div>
+            </div>
+            <?php endif; ?>
         </div>
-    <?php endif; ?>
-    <?php if($item->media()): ?>
-        <div class="media-list">
-        <?php
-        foreach ($item->media() as $media):
-            echo $media->linkRaw($this->thumbnail($media, 'medium', ['title' => $media->displayTitle()]), null, [
-                'class' => 'media resource'
-            ]);
-        endforeach;
-        ?>
-        </div>
-    <?php endif; ?>
     </div>
-<?php endforeach; ?>
-</div>
+</section>

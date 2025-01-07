@@ -283,7 +283,19 @@ class ApiSearch extends AbstractPlugin
         ];
         $searchFormSettings['resource'] = $resource;
         // Fix to be removed.
-        $searchFormSettings['resource_fields'] = $searchConfigSettings['resource_fields'] ?? [];
+        $searchEngine = $searchConfig->engine();
+        $searchAdapter = $searchEngine ? $searchEngine->adapter() : null;
+        if ($searchAdapter) {
+            $availableFields = $searchAdapter->setSearchEngine($searchEngine)->getAvailableFields();
+            $searchFormSettings['available_fields'] = array_combine(array_keys($availableFields), array_keys($availableFields));
+        } else {
+            $searchFormSettings['available_fields'] = [];
+        }
+
+        // Solr doesn't allow unavailable args anymore (invalid or unknown).
+        $searchFormSettings['only_available_fields'] = $searchAdapter
+            && $searchAdapter instanceof \SearchSolr\Adapter\SolariumAdapter;
+
         $searchQuery = $this->apiFormAdapter->toQuery($query, $searchFormSettings);
         $searchQuery->setResources([$resource]);
 
@@ -449,32 +461,34 @@ class ApiSearch extends AbstractPlugin
      *
      * @todo Factorize with \AdvancedSearch\FormAdapter\ApiFormAdapter::normalizeProperty().
      *
-     * @param string|int $property
+     * @param string|int $termOrId
      * @return string
      */
-    protected function normalizeProperty($property)
+    protected function normalizeProperty($termOrId): string
     {
         static $properties;
 
-        if (!$property) {
+        if (!$termOrId) {
             return '';
         }
 
         if (is_null($properties)) {
             $sql = <<<'SQL'
-SELECT property.id, CONCAT(vocabulary.prefix, ":", property.local_name)
+SELECT
+    CONCAT(vocabulary.prefix, ":", property.local_name),
+    property.id
 FROM property
 JOIN vocabulary ON vocabulary.id = property.vocabulary_id
 SQL;
-            $properties = $this->entityManager->getConnection()
-                ->executeQuery($sql)->fetchAll(\PDO::FETCH_KEY_PAIR);
+            $properties = array_map('intval', $this->entityManager->getConnection()->executeQuery($sql)->fetchAllKeyValue());
         }
-        if (is_numeric($property)) {
-            $property = (int) $property;
-            return $properties[$property] ?? '';
+
+        if (is_numeric($termOrId)) {
+            return array_search((int) $termOrId, $properties) ?: '';
         }
-        $property = (string) $property;
-        return in_array($property, $properties) ? $property : '';
+
+        $termOrId = (string) $termOrId;
+        return isset($properties[$termOrId]) ? $termOrId : '';
     }
 
     /**

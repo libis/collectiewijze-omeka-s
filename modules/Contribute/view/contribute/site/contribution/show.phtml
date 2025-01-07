@@ -1,0 +1,47 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var \Omeka\Api\Representation\SiteRepresentation $site
+ * @var \Contribute\Api\Representation\ContributionRepresentation|null $contribution
+ * @var \Omeka\Api\Representation\AbstractResourceEntityRepresentation|null $resource
+ * @var string $space "default" or "guest"
+ */
+
+$plugins = $this->getHelperPluginManager();
+$partial = $plugins->get('partial');
+$escape = $plugins->get('escapeHtml');
+$translate = $plugins->get('translate');
+$escapeAttr = $plugins->get('escapeHtmlAttr');
+
+// Medias are displayed through displayValues() for now.
+// $medias = $contribution->valuesMedias();
+// $embedMedia = $siteSetting('item_media_embed', false);
+
+$siteSlug = $this->params()->fromRoute('site-slug');
+
+$this->vars()->offsetSet('skipContributeCss', false);
+$partial('contribute/site/contribution/asset-include');
+
+$this->htmlElement('body')->appendAttribute('class', 'contribution resource show');
+?>
+
+<div class="contribute-resource conbribute-show container <?= $space && $space !== 'default' ? $space : '' ?>">
+
+    <h1><?= $translate('Materiaalsuggestie') ?></h1>
+
+    <?php $this->trigger('view.show.before'); ?>
+
+    <?= $contribution->displayValues() ?>
+
+    <?php if (!$contribution->isSubmitted()): ?>
+    <ul class="actions" data-message-remove-contribution="<?= $escapeAttr($translate('Are you sure to remove this contribution?')) ?>">
+        <?php if ($contribution->userIsAllowed('update')): ?>
+        <li><a class="btn btn-tertiary button edit-button edit-contribution" href="<?= $escapeAttr($contribution->siteUrl($siteSlug, false, 'edit', $space === 'guest')) ?>"><?= $escape($translate('Edit')) ?></a></li>
+        <?php endif; ?>
+        <li><a class="btn btn-primary button submit-button submit-contribution" href="<?= $escapeAttr($contribution->siteUrl($siteSlug, false, 'submit', $space === 'guest')) ?>"><?= $escape($translate('Submit')) ?></a></li>
+    </ul>
+    <?php endif; ?>
+
+    <?php $this->trigger('view.show.after'); ?>
+
+</div>

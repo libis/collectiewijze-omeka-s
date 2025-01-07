@@ -40,13 +40,33 @@ if (!empty($itemSet)) {
 $options = $searchPage->setting('facet', []);
 ?>
 
+<style>
+    li,ul{
+        list-style-type: none;
+    }
+    details,summary{
+        display: list-item;
+    }
+    h4{
+        display:inline;
+    }
+    .apply-facets-top{
+        padding-bottom: 5%;
+    }
+    .search-facet-items{
+        overflow: auto;
+        max-height: 150px;
+    }
+</style>
+
 <aside class="search-facets">
 
-    <h3><?= $translate('Facets') ?></h3>
+    <h3><?= $translate('Filters') ?></h3>
 
-    <?php if ($displayActive && count($activeFacets)): ?>
-    <h4><?= $translate('Active facets') ?></h4>
+    <?php if ($displayActive && isset($activeFacets)): ?>
+    <!-- <h4><?= $translate('Actieve filters') ?></h4> -->
     <ul class="search-facets-active">
+
         <?php foreach ($activeFacets as $name => $facetValues) foreach ($facetValues as $facetValue): ?>
         <li><?= $facetActive($name, ['value' => $facetValue, 'count' => null], $options) ?></li>
         <?php endforeach; ?>
@@ -61,7 +81,7 @@ $options = $searchPage->setting('facet', []);
 
         <?php if ($displayFacetButton && ($displayButton === 'above' || $displayButton === 'both')): ?>
         <div class="apply-facets apply-facets-top">
-            <input type="submit" value="<?= $translate('Apply facets') ?>"/>
+            <input type="submit" value="<?= $translate('Filteren') ?>"/>
         </div>
         <?php endif; ?>
 
@@ -71,12 +91,19 @@ $options = $searchPage->setting('facet', []);
         <ul class="search-facets-list">
             <?php foreach ($facets as $name => $facetValues): ?>
             <li class="search-facet">
-                <h4><?= $translate($facetLabel($name)) ?></h4>
-                <?php if (($options['facets'][$name]['type'] ?? 'Checkbox') === 'Select'): ?>
-                <?= $facetSelect($name, $facetValues, $options) ?>
-                <?php else: ?>
-                <?= $facetElements($name, $facetValues, $options) ?>
-                <?php endif; ?>
+                <details>
+                    <?php if($facetLabel($name) == 'samenstelling'):?>
+                    <input type="text" id="samenstellingSearch" oninput="searchSamenstelling()" placeholder="Zoeken in filter..." style="margin:5% 0%;">
+                    <?php endif;?>
+                    <summary>
+                        <h4><?= $translate($facetLabel($name)) ?></h4>
+                    </summary>
+                    <?php if (($options['facets'][$name]['type'] ?? 'Checkbox') === 'Select'): ?>
+                    <?= $facetSelect($name, $facetValues, $options) ?>
+                    <?php else: ?>
+                    <?= $facetElements($name, $facetValues, $options) ?>
+                    <?php endif; ?>
+                </details>
             </li>
             <?php endforeach; ?>
         </ul>
@@ -84,10 +111,33 @@ $options = $searchPage->setting('facet', []);
 
         <?php if ($displayFacetButton && ($displayButton === 'below' || $displayButton === 'both')): ?>
         <div class="apply-facets apply-facets-bottom">
-            <input type="submit" value="<?= $translate('Apply facets') ?>"/>
+            <input type="submit" value="<?= $translate('Filteren') ?>"/>
         </div>
         <?php endif; ?>
 
     </form>
 
 </aside>
+
+<script>
+function searchSamenstelling() {
+  // Declare variables
+  var input, filter, ul, li, label, i, txtValue;
+  input = document.getElementById('samenstellingSearch');
+  filter = input.value.toUpperCase();
+  details = input.parentElement;
+  ul = details.getElementsByTagName('ul')[0];
+  li = ul.getElementsByTagName('li');
+
+  // Loop through all list items, and hide those who don't match the search query
+  for (i = 0; i < li.length; i++) {
+    label = li[i].getElementsByTagName("label")[0];
+    txtValue = label.textContent || label.innerText;
+    if (txtValue.toUpperCase().indexOf(filter) > -1) {
+      li[i].style.display = "";
+    } else {
+      li[i].style.display = "none";
+    }
+  }
+}
+</script>

@@ -14,7 +14,7 @@ $translate = $this->plugin('translate');
     <?php endif; ?>
 
     <?php if($this->resources):?>
-    <div class="columns <?php echo $block->dataValue('columns');?>">
+    <div class="columns is-multiline <?php echo $block->dataValue('columns');?>">
       <?php
       $headingTerm = $this->siteSetting('browse_heading_property_term', 'dcterms:title');
       $bodyTerm = $this->siteSetting('browse_body_property_term', 'dcterms:description');

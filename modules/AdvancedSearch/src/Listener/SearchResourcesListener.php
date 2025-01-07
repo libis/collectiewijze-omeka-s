@@ -2,23 +2,19 @@
 
 namespace AdvancedSearch\Listener;
 
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\Query\Expr\Join;
 use Doctrine\ORM\QueryBuilder;
 use Laminas\EventManager\Event;
 use Omeka\Api\Adapter\ItemAdapter;
+use Omeka\Api\Adapter\ItemSetAdapter;
 use Omeka\Api\Adapter\MediaAdapter;
+use Omeka\Api\Exception\NotFoundException;
 
 class SearchResourcesListener
 {
     /**
-     * List of property ids by term and id.
-     *
-     * @var array
-     */
-    protected $propertiesByTermsAndIds;
-
-    /**
-     * List of used property ids by term and id.
+     * List of used property ids by term.
      *
      * @var array
      */
@@ -32,7 +28,7 @@ class SearchResourcesListener
     protected $resourceClassesByTermsAndIds;
 
     /**
-     * List of used resource class ids by term and id.
+     * List of used resource class ids by term.
      *
      * @var array
      */
@@ -47,6 +43,8 @@ class SearchResourcesListener
 
     /**
      * Helper to filter search queries.
+     *
+     * @todo Integrate the override in a way a direct call to adapter->buildQuery() can work with advanced property search (see Reference and some other modules).
      */
     public function onDispatch(Event $event): void
     {
@@ -68,6 +66,7 @@ class SearchResourcesListener
         }
 
         // Process advanced search plus keys.
+        $this->searchSites($qb, $query);
         $this->searchResourceClassTerm($qb, $query);
         $this->searchDateTime($qb, $query);
         $this->buildPropertyQuery($qb, $query);
@@ -75,11 +74,12 @@ class SearchResourcesListener
             $this->searchHasMedia($qb, $query);
             $this->searchHasMediaOriginal($qb, $query);
             $this->searchHasMediaThumbnails($qb, $query);
-            $this->searchItemByMediaType($qb, $query);
+            $this->searchByMediaType($qb, $query);
         } elseif ($this->adapter instanceof MediaAdapter) {
             $this->searchMediaByItemSet($qb, $query);
             $this->searchHasOriginal($qb, $query);
             $this->searchHasThumbnails($qb, $query);
+            $this->searchByMediaType($qb, $query);
         }
     }
 
@@ -117,7 +117,7 @@ class SearchResourcesListener
                 if (empty($queryRow['joiner'])) {
                     $queryRow['joiner'] = 'and';
                 } else {
-                    if (!in_array($queryRow['joiner'], ['and', 'or'])) {
+                    if (!in_array($queryRow['joiner'], ['and', 'or', 'not'])) {
                         unset($query['datetime'][$key]);
                         continue;
                     }
@@ -165,6 +165,88 @@ class SearchResourcesListener
     }
 
     /**
+     * Allow to search a resource in multiple sites (with "or").
+     */
+    protected function searchSites(QueryBuilder $qb, array $query): void
+    {
+        if (empty($query['site_id']) || !is_array($query['site_id'])) {
+            return;
+        }
+
+        // The site "0" is kept: no site, as in core adapter.
+        $sites = array_unique(array_map('intval', array_filter($query['site_id'], 'is_numeric')));
+        if (!$sites) {
+            return;
+        }
+
+        $expr = $qb->expr();
+
+        // Adapted from \Omeka\Api\Adapter\ItemAdapter::buildQuery().
+        if ($this->adapter instanceof ItemAdapter) {
+            $siteAlias = $this->adapter->createAlias();
+            $qb->innerJoin(
+                'omeka_root.sites', $siteAlias, Join::WITH, $expr->in(
+                    "$siteAlias.id",
+                    $this->adapter->createNamedParameter($qb, $sites)
+                )
+            );
+
+            if (!empty($query['site_attachments_only'])) {
+                $siteBlockAttachmentsAlias = $this->adapter->createAlias();
+                $qb->innerJoin(
+                    'omeka_root.siteBlockAttachments',
+                    $siteBlockAttachmentsAlias
+                );
+                $sitePageBlockAlias = $this->adapter->createAlias();
+                $qb->innerJoin(
+                    "$siteBlockAttachmentsAlias.block",
+                    $sitePageBlockAlias
+                );
+                $sitePageAlias = $this->adapter->createAlias();
+                $qb->innerJoin(
+                    "$sitePageBlockAlias.page",
+                    $sitePageAlias
+                );
+                $siteAlias = $this->adapter->createAlias();
+                $qb->innerJoin(
+                    "$sitePageAlias.site",
+                    $siteAlias
+                );
+                $qb->andWhere($expr->in(
+                    "$siteAlias.id",
+                    $this->adapter->createNamedParameter($qb, $sites))
+                );
+            }
+        }
+
+        // Adapted from \Omeka\Api\Adapter\ItemSetAdapter::buildQuery().
+        elseif ($this->adapter instanceof ItemSetAdapter) {
+            $siteAdapter = $this->adapter->getAdapter('sites');
+            // Though $site isn't used here, this is intended to ensure that the
+            // user cannot perform a query against a private site he doesn't
+            // have access to.
+            // TODO To be optimized.
+            foreach ($sites as &$site) {
+                try {
+                    $siteAdapter->findEntity($site);
+                } catch (NotFoundException $e) {
+                    $site = 0;
+                }
+            }
+            unset($site);
+            $this->siteItemSetsAlias = $this->adapter->createAlias();
+            $qb->innerJoin(
+                'omeka_root.siteItemSets',
+                $this->siteItemSetsAlias
+            );
+            $qb->andWhere($expr->in(
+                "$this->siteItemSetsAlias.site",
+                $this->adapter->createNamedParameter($qb, $sites))
+            );
+        }
+    }
+
+    /**
      * Allow to search a resource by a class term.
      */
     protected function searchResourceClassTerm(QueryBuilder $qb, array $query): void
@@ -198,10 +280,11 @@ class SearchResourcesListener
      *
      * Query format:
      *
-     * - property[{index}][joiner]: "and" OR "or" joiner with previous query
-     * - property[{index}][property]: property ID
-     * - property[{index}][text]: search text
+     * - property[{index}][joiner]: "and" OR "or" OR "not" joiner with previous query
+     * - property[{index}][property]: property ID or term or array of property IDs or terms
+     * - property[{index}][text]: search text or array of texts or values
      * - property[{index}][type]: search type
+     * - property[{index}][datatype]: filter on data type(s)
      *   - eq: is exactly (core)
      *   - neq: is not exactly (core)
      *   - in: contains (core)
@@ -214,8 +297,14 @@ class SearchResourcesListener
      *   - nsw: does not start with
      *   - ew: ends with
      *   - new: does not end with
-     *   - res: has resource
-     *   - nres: has no resource
+     *   - res: has resource (core)
+     *   - nres: has no resource (core)
+     *   - dtp: has data type
+     *   - ndtp: does not have data type
+     *   - lex: is a linked resource
+     *   - nlex: is not a linked resource
+     *   - lres: is linked with resource #id
+     *   - nlres: is not linked with resource #id
      *   For date time only for now (a check is done to have a meaningful answer):
      *   TODO Remove the check for valid date time? Add another key (before/after)?
      *   Of course, it's better to use Numeric Data Types.
@@ -235,41 +324,125 @@ class SearchResourcesListener
 
         $valuesJoin = 'omeka_root.values';
         $where = '';
-        $expr = $qb->expr();
 
-        $escape = function ($string) {
+        // @see \Doctrine\ORM\QueryBuilder::expr().
+        $expr = $qb->expr();
+        $entityManager = $this->adapter->getEntityManager();
+
+        $escapeSql = function ($string) {
             return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], (string) $string);
         };
 
-        $entityManager = $this->adapter->getEntityManager();
+        // Initialize properties and used properties one time.
+        $this->getPropertyIds();
+
+        $reciprocalQueryTypes = [
+            'eq' => 'neq',
+            'neq' => 'eq',
+            'in' => 'nin',
+            'nin' => 'in',
+            'ex' => 'nex',
+            'nex' => 'ex',
+            'list' => 'nlist',
+            'nlist' => 'list',
+            'sw' => 'nsw',
+            'nsw' => 'sw',
+            'ew' => 'new',
+            'new' => 'ew',
+            'res' => 'nres',
+            'nres' => 'res',
+            'dtp' => 'ndtp',
+            'ndtp' => 'dtp',
+            'lex' => 'nlex',
+            'nlex' => 'lex',
+            'lres' => 'nlres',
+            'nlres' => 'lres',
+            'gt' => 'lte',
+            'gte' => 'lt',
+            'lte' => 'gt',
+            'lt' => 'gte',
+        ];
+
+        $arrayValueQueryTypes = [
+            'list',
+            'nlist',
+            'res',
+            'nres',
+            'lres',
+            'nlres',
+        ];
+
+        $intValueQueryTypes = [
+            'res',
+            'nres',
+            'lres',
+            'nlres',
+        ];
+
+        $withoutValueQueryTypes = [
+            'ex',
+            'nex',
+            'lex',
+            'nlex',
+        ];
+
+        $subjectQueryTypes = [
+            'lex',
+            'nlex',
+            'lres',
+            'nlres',
+        ];
 
         foreach ($query['property'] as $queryRow) {
             if (!(
                 is_array($queryRow)
-                && array_key_exists('property', $queryRow)
                 && array_key_exists('type', $queryRow)
             )) {
                 continue;
             }
 
             $queryType = $queryRow['type'];
-            $joiner = $queryRow['joiner'] ?? '';
-            $value = $queryRow['text'] ?? '';
-
-            // A value can be an array with types "list" and "nlist".
-            if (!is_array($value)
-                && !strlen((string) $value)
-                && $queryType !== 'nex'
-                && $queryType !== 'ex'
-            ) {
+            if (!isset($reciprocalQueryTypes[$queryType])) {
                 continue;
             }
 
-            $propertyId = $queryRow['property'];
-            if ($propertyId) {
-                $propertyId = $this->getPropertyId($propertyId);
+            $value = $queryRow['text'] ?? '';
+
+            // Quick check of value.
+            // A empty string "" is not a value, but "0" is a value.
+            if (in_array($queryType, $withoutValueQueryTypes, true)) {
+                $value = null;
             }
-            $excludePropertyIds = $queryRow['property'] || empty($queryRow['except']) ? false : $queryRow['except'];
+            // Check array of values.
+            elseif (in_array($queryType, $arrayValueQueryTypes, true)) {
+                if ((is_array($value) && !count($value))
+                    || (!is_array($value) && !strlen((string) $value))
+                ) {
+                    continue;
+                }
+                if (!is_array($value)) {
+                    $value = [$value];
+                }
+                $value = in_array($queryType, $intValueQueryTypes)
+                    ? array_unique(array_map('intval', $value))
+                    : array_unique(array_filter(array_map('trim', array_map('strval', $value)), 'strlen'));
+                if (empty($value)) {
+                    continue;
+                }
+            }
+            // The value should be a scalar in all other cases.
+            elseif (is_array($value) || !strlen((string) $value)) {
+                continue;
+            }
+
+            $joiner = $queryRow['joiner'] ?? '';
+            $dataType = $queryRow['datatype'] ?? '';
+
+            // Invert the query type for joiner "not".
+            if ($joiner === 'not') {
+                $joiner = 'and';
+                $queryType = $reciprocalQueryTypes[$queryType];
+            }
 
             $valuesAlias = $this->adapter->createAlias();
             $positive = true;
@@ -298,7 +471,7 @@ class SearchResourcesListener
                     $positive = false;
                     // no break.
                 case 'in':
-                    $param = $this->adapter->createNamedParameter($qb, '%' . $escape($value) . '%');
+                    $param = $this->adapter->createNamedParameter($qb, '%' . $escapeSql($value) . '%');
                     $subqueryAlias = $this->adapter->createAlias();
                     $subquery = $entityManager
                         ->createQueryBuilder()
@@ -316,12 +489,8 @@ class SearchResourcesListener
                     $positive = false;
                     // no break.
                 case 'list':
-                    $list = is_array($value) ? $value : explode("\n", $value);
-                    $list = array_unique(array_filter(array_map('trim', array_map('strval', $list)), 'strlen'));
-                    if (empty($list)) {
-                        continue 2;
-                    }
-                    $param = $this->adapter->createNamedParameter($qb, $list);
+                    $param = $this->adapter->createNamedParameter($qb, $value);
+                    $qb->setParameter(substr($param, 1), $value, Connection::PARAM_STR_ARRAY);
                     $subqueryAlias = $this->adapter->createAlias();
                     $subquery = $entityManager
                         ->createQueryBuilder()
@@ -339,7 +508,7 @@ class SearchResourcesListener
                     $positive = false;
                     // no break.
                 case 'sw':
-                    $param = $this->adapter->createNamedParameter($qb, $escape($value) . '%');
+                    $param = $this->adapter->createNamedParameter($qb, $escapeSql($value) . '%');
                     $subqueryAlias = $this->adapter->createAlias();
                     $subquery = $entityManager
                         ->createQueryBuilder()
@@ -357,7 +526,7 @@ class SearchResourcesListener
                     $positive = false;
                     // no break.
                 case 'ew':
-                    $param = $this->adapter->createNamedParameter($qb, '%' . $escape($value));
+                    $param = $this->adapter->createNamedParameter($qb, '%' . $escapeSql($value));
                     $subqueryAlias = $this->adapter->createAlias();
                     $subquery = $entityManager
                         ->createQueryBuilder()
@@ -375,10 +544,14 @@ class SearchResourcesListener
                     $positive = false;
                     // no break.
                 case 'res':
-                    $predicateExpr = $expr->eq(
-                        "$valuesAlias.valueResource",
-                        $this->adapter->createNamedParameter($qb, $value)
-                    );
+                    if (count($value) <= 1) {
+                        $param = $this->adapter->createNamedParameter($qb, (int) reset($value));
+                        $predicateExpr = $expr->eq("$valuesAlias.valueResource", $param);
+                    } else {
+                        $param = $this->adapter->createNamedParameter($qb, $value);
+                        $qb->setParameter(substr($param, 1), $value, Connection::PARAM_INT_ARRAY);
+                        $predicateExpr = $expr->in("$valuesAlias.valueResource", $param);
+                    }
                     break;
 
                 case 'nex':
@@ -386,6 +559,54 @@ class SearchResourcesListener
                     // no break.
                 case 'ex':
                     $predicateExpr = $expr->isNotNull("$valuesAlias.id");
+                    break;
+
+                case 'ndtp':
+                    $positive = false;
+                    // no break.
+                case 'dtp':
+                    if (is_array($value)) {
+                        $dataTypeAlias = $this->adapter->createAlias();
+                        $qb->setParameter($dataTypeAlias, $value, \Doctrine\DBAL\Connection::PARAM_STR_ARRAY);
+                        $predicateExpr = $expr->in("$valuesAlias.type", $dataTypeAlias);
+                    } else {
+                        $dataTypeAlias = $this->adapter->createNamedParameter($qb, $value);
+                        $predicateExpr = $expr->eq("$valuesAlias.type", $dataTypeAlias);
+                    }
+                    break;
+
+                // The linked resources (subject values) use the same sub-query.
+                case 'nlex':
+                    // For consistency, "nlex" is the reverse of "lex" even when
+                    // a resource is linked with a public and a private resource.
+                    // A private linked resource is not linked for an anonymous.
+                case 'nlres':
+                    $positive = false;
+                    // no break.
+                case 'lex':
+                case 'lres':
+                    $subValuesAlias = $this->adapter->createAlias();
+                    $subResourceAlias = $this->adapter->createAlias();
+                    // Use a subquery so rights are automatically managed.
+                    $subQb = $entityManager
+                        ->createQueryBuilder()
+                        ->select("IDENTITY($subValuesAlias.valueResource)")
+                        ->from(\Omeka\Entity\Value::class, $subValuesAlias)
+                        ->innerJoin("$subValuesAlias.resource", $subResourceAlias)
+                        ->where($expr->isNotNull("$subValuesAlias.valueResource"));
+                    // Warning: the property check should be done on subjects,
+                    // so the predicate expression is finalized below.
+                    if (is_array($value)) {
+                        // In fact, "lres" is the list of linked resources.
+                        if (count($value) <= 1) {
+                            $param = $this->adapter->createNamedParameter($qb, (int) reset($value));
+                            $subQb->andWhere($expr->eq("$subValuesAlias.resource", $param));
+                        } else {
+                            $param = $this->adapter->createNamedParameter($qb, $value);
+                            $qb->setParameter(substr($param, 1), $value, Connection::PARAM_INT_ARRAY);
+                            $subQb->andWhere($expr->in("$subValuesAlias.resource", $param));
+                        }
+                    }
                     break;
 
                 // TODO Manage uri and resources with gt, gte, lte, lt (it has a meaning at least for resource ids, but separate).
@@ -438,26 +659,83 @@ class SearchResourcesListener
                     continue 2;
             }
 
+            // Avoid to get results when the query is incorrect.
+            // In that case, no param should be set in the current loop.
+            if ($incorrectValue) {
+                $where = $expr->eq('omeka_root.id', 0);
+                break;
+            }
+
             $joinConditions = [];
-            // Narrow to specific property, if one is selected.
-            // The check is done against the requested property, like in core.
-            if ($queryRow['property']) {
-                $joinConditions[] = $expr->eq("$valuesAlias.property", (int) $propertyId);
-            } elseif ($excludePropertyIds) {
-                $excludePropertyIds = $this->getPropertyIds(is_array($excludePropertyIds) ? $excludePropertyIds : [$excludePropertyIds]);
-                // Use standard query if nothing to exclude, else limit search.
-                if (count($excludePropertyIds)) {
-                    // The aim is to search anywhere except ocr content.
-                    // Use not positive + in() or notIn()? A full list is simpler.
-                    $otherIds = array_diff($this->usedPropertiesByTerm, $excludePropertyIds);
+
+            // Narrow to specific properties, if one or more are selected.
+            $propertyIds = $queryRow['property'] ?? null;
+            // Properties may be an array with an empty value (any property) in
+            // advanced form, so remove empty strings from it, in which case the
+            // check should be skipped.
+            if (is_array($propertyIds) && in_array('', $propertyIds, true)) {
+                $propertyIds = [];
+            }
+            // TODO What if a property is ""?
+            $excludePropertyIds = $propertyIds || empty($queryRow['except'])
+                ? false
+                :  array_values(array_unique($this->getPropertyIds($queryRow['except'])));
+            if ($propertyIds) {
+                $propertyIds = array_values(array_unique($this->getPropertyIds($propertyIds)));
+                if ($propertyIds) {
+                    // For queries on subject values, the properties should be
+                    // checked against the sub-query.
+                    if (in_array($queryType, $subjectQueryTypes)) {
+                        $subQb
+                            ->andWhere(count($propertyIds) < 2
+                                ? $expr->eq("$subValuesAlias.property", reset($propertyIds))
+                                : $expr->in("$subValuesAlias.property", $propertyIds)
+                            );
+                    } else {
+                        $joinConditions[] = count($propertyIds) < 2
+                            ? $expr->eq("$valuesAlias.property", reset($propertyIds))
+                            : $expr->in("$valuesAlias.property", $propertyIds);
+                    }
+                } else {
+                    // Don't return results for this part for fake properties.
+                    $joinConditions[] = $expr->eq("$valuesAlias.property", 0);
+                }
+            }
+            // Use standard query if nothing to exclude, else limit search.
+            elseif ($excludePropertyIds) {
+                // The aim is to search anywhere except ocr content.
+                // Use not positive + in() or notIn()? A full list is simpler.
+                $otherIds = array_diff($this->usedPropertiesByTerm, $excludePropertyIds);
+                // Avoid issue when everything is excluded.
+                $otherIds[] = 0;
+                if (in_array($queryType, $subjectQueryTypes)) {
+                    $subQb
+                        ->andWhere($expr->in("$subValuesAlias.property", $otherIds));
+                } else {
                     $joinConditions[] = $expr->in("$valuesAlias.property", $otherIds);
                 }
             }
 
-            // Avoid to get results with an incorrect query.
-            if ($incorrectValue) {
-                $where = $expr->eq('omeka_root.id', 0);
-                break;
+            // Finalize predicate expression on subject values.
+            if (in_array($queryType, $subjectQueryTypes)) {
+                $predicateExpr = $expr->in("$valuesAlias.resource", $subQb->getDQL());
+            }
+
+            if ($dataType) {
+                if (is_array($dataType)) {
+                    $dataTypeAlias = $this->adapter->createAlias();
+                    $qb->setParameter($dataTypeAlias, $dataType, \Doctrine\DBAL\Connection::PARAM_STR_ARRAY);
+                    $predicateExpr = $expr->andX(
+                        $predicateExpr,
+                        $expr->in("$valuesAlias.type", ':' . $dataTypeAlias)
+                    );
+                } else {
+                    $dataTypeAlias = $this->adapter->createNamedParameter($qb, $dataType);
+                    $predicateExpr = $expr->andX(
+                        $predicateExpr,
+                        $expr->eq("$valuesAlias.type", $dataTypeAlias)
+                    );
+                }
             }
 
             if ($positive) {
@@ -468,14 +746,14 @@ class SearchResourcesListener
             }
 
             if ($joinConditions) {
-                $qb->leftJoin($valuesJoin, $valuesAlias, 'WITH', $expr->andX(...$joinConditions));
+                $qb->leftJoin($valuesJoin, $valuesAlias, Join::WITH, $expr->andX(...$joinConditions));
             } else {
                 $qb->leftJoin($valuesJoin, $valuesAlias);
             }
 
             if ($where == '') {
                 $where = $whereClause;
-            } elseif ($joiner == 'or') {
+            } elseif ($joiner === 'or') {
                 $where .= " OR $whereClause";
             } else {
                 $where .= " AND $whereClause";
@@ -769,12 +1047,12 @@ class SearchResourcesListener
     }
 
     /**
-     * Build query to check if media types.
+     * Build query to check by media types.
      *
      * @param QueryBuilder $qb
      * @param array $query
      */
-    protected function searchItemByMediaType(
+    protected function searchByMediaType(
         QueryBuilder $qb,
         array $query
     ): void {
@@ -790,8 +1068,18 @@ class SearchResourcesListener
             return;
         }
 
-        $mediaAlias = $this->adapter->createAlias();
         $expr = $qb->expr();
+
+        if ($this->adapter instanceof MediaAdapter) {
+            $qb
+                ->andWhere($expr->in(
+                    'omeka_root.mediaType',
+                    $this->adapter->createNamedParameter($qb, $values)
+                ));
+            return;
+        }
+
+        $mediaAlias = $this->adapter->createAlias();
 
         $qb->innerJoin(
             \Omeka\Entity\Media::class,
@@ -893,12 +1181,12 @@ class SearchResourcesListener
             $qb
                 ->leftJoin(
                     'omeka_root.item',
-                    $itemAlias, 'WITH',
+                    $itemAlias, Join::WITH,
                     $expr->eq("$itemAlias.id", 'omeka_root.item')
                 )
                 ->innerJoin(
                     $itemAlias . '.itemSets',
-                    $itemSetAlias, 'WITH',
+                    $itemSetAlias, Join::WITH,
                     $expr->in("$itemSetAlias.id", $this->adapter->createNamedParameter($qb, $itemSets))
                 );
         }
@@ -1065,65 +1353,50 @@ class SearchResourcesListener
     }
 
     /**
-     * Get property ids by JSON-LD terms or by numeric ids.
+     * Get one or more property ids by JSON-LD terms or by numeric ids.
      *
-     * @return int[]
+     * @param array|int|string|null $termsOrIds One or multiple ids or terms.
+     * @return int[] The property ids matching terms or ids, or all properties
+     * by terms.
      */
-    protected function getPropertyIds(array $termsOrIds): array
+    protected function getPropertyIds($termsOrIds = null): array
     {
-        if (is_null($this->propertiesByTermsAndIds)) {
-            $this->prepareProperties();
-        }
-        return array_values(array_intersect_key($this->propertiesByTermsAndIds, array_flip($termsOrIds)));
-    }
+        static $propertiesByTerms;
+        static $propertiesByTermsAndIds;
 
-    /**
-     * Get a property id by JSON-LD term or by numeric id.
-     */
-    protected function getPropertyId($termOrId): ?int
-    {
-        if (is_null($this->propertiesByTermsAndIds)) {
-            $this->prepareProperties();
-        }
-        return $this->propertiesByTermsAndIds[$termOrId] ?? null;
-    }
-
-    /**
-     * Prepare the list of properties and used properties.
-     */
-    protected function prepareProperties(): self
-    {
-        if (is_null($this->propertiesByTermsAndIds)) {
+        if (is_null($propertiesByTermsAndIds)) {
             $connection = $this->adapter->getServiceLocator()->get('Omeka\Connection');
             $qb = $connection->createQueryBuilder();
             $qb
-                ->select([
-                    'DISTINCT property.id AS id',
-                    'CONCAT(vocabulary.prefix, ":", property.local_name) AS term',
-                    // Only the two first selects are needed, but some databases
-                    // require "order by" or "group by" value to be in the select.
-                    'vocabulary.id',
-                    'property.id',
-                ])
+                ->select(
+                    'DISTINCT CONCAT(vocabulary.prefix, ":", property.local_name) AS term',
+                    'property.id AS id',
+                    // Required with only_full_group_by.
+                    'vocabulary.id'
+                )
                 ->from('property', 'property')
                 ->innerJoin('property', 'vocabulary', 'vocabulary', 'property.vocabulary_id = vocabulary.id')
                 ->orderBy('vocabulary.id', 'asc')
                 ->addOrderBy('property.id', 'asc')
-                ->addGroupBy('property.id')
             ;
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $properties = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $properties = array_map('intval', array_column($properties, 'id', 'term'));
-            $this->propertiesByTermsAndIds = array_replace($properties, array_combine($properties, $properties));
+            $propertiesByTerms = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
+            $propertiesByTermsAndIds = array_replace($propertiesByTerms, array_combine($propertiesByTerms, $propertiesByTerms));
 
             $qb->innerJoin('property', 'value', 'value', 'property.id = value.property_id');
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $properties = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $this->usedPropertiesByTerm = array_map('intval', array_column($properties, 'id', 'term'));
+            $this->usedPropertiesByTerm = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
         }
-        return $this;
+
+        if (is_null($termsOrIds)) {
+            return $propertiesByTerms;
+        }
+
+        if (is_scalar($termsOrIds)) {
+            return isset($propertiesByTermsAndIds[$termsOrIds])
+                ? [$termsOrIds => $propertiesByTermsAndIds[$termsOrIds]]
+                : [];
+        }
+
+        return array_intersect_key($propertiesByTermsAndIds, array_flip($termsOrIds));
     }
 
     /**
@@ -1151,39 +1424,30 @@ class SearchResourcesListener
     }
 
     /**
-     * Prepare the list of resource classes and used properties.
+     * Prepare the list of resource classes and used resource classes by term.
      */
     protected function prepareResourceClasses(): self
     {
-        if (is_null($this->propertiesByTermsAndIds)) {
+        if (is_null($this->resourceClassesByTermsAndIds)) {
             $connection = $this->adapter->getServiceLocator()->get('Omeka\Connection');
             $qb = $connection->createQueryBuilder();
             $qb
-                ->select([
-                    'DISTINCT resource_class.id AS id',
+                ->select(
                     'CONCAT(vocabulary.prefix, ":", resource_class.local_name) AS term',
-                    // Only the two first selects are needed, but some databases
-                    // require "order by" or "group by" value to be in the select.
-                    'vocabulary.id',
-                    'resource_class.id',
-                ])
+                    'resource_class.id AS id',
+                    // Required with only_full_group_by.
+                    'vocabulary.id'
+                )
                 ->from('resource_class', 'resource_class')
                 ->innerJoin('resource_class', 'vocabulary', 'vocabulary', 'resource_class.vocabulary_id = vocabulary.id')
                 ->orderBy('vocabulary.id', 'asc')
                 ->addOrderBy('resource_class.id', 'asc')
-                ->addGroupBy('resource_class.id')
             ;
-            $stmt = $connection->executeQuery($qb);
-            // Fetch by key pair is not supported by doctrine 2.0.
-            $resourceClasses = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            $resourceClasses = array_map('intval', array_column($resourceClasses, 'id', 'term'));
+            $resourceClasses = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
             $this->resourceClassesByTermsAndIds = array_replace($resourceClasses, array_combine($resourceClasses, $resourceClasses));
 
-            // $qb->innerJoin('resource_class', 'resource', 'resource', 'resource_class.id = resource.resource_class_id');
-            // $stmt = $connection->executeQuery($qb);
-            // // Fetch by key pair is not supported by doctrine 2.0.
-            // $resourceClasses = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            // $this->usedResourceClassesByTerm = array_map('intval', array_column($resourceClasses, 'id', 'term'));
+            $qb->innerJoin('resource_class', 'resource', 'resource', 'resource_class.id = resource.resource_class_id');
+            $this->usedResourceClassesByTerm = array_map('intval', $connection->executeQuery($qb)->fetchAllKeyValue());
             return $this;
         }
     }

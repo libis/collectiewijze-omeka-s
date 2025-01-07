@@ -11,9 +11,21 @@ $form
     ->setData($params)
     ->prepare();
 ?>
+<style>
+    #form-search input[type="search"]{
+        max-width: 95%;
+    }
+</style>
 
 <div id="advanced-search-form-wrapper">
     <div id="advanced-search-form">
         <?= $this->form($form) ?>
     </div>
 </div>
+
+<script>
+    $(document).ready(function(){
+        $(".inputs").attr('class', 'inputs input-group flex-nowrap');
+    });
+
+</script>

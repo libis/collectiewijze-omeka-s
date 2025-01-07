@@ -45,7 +45,7 @@ class BrowseBlock extends AbstractBlockLayout
             'type' => Element\Text::class,
             'options' => [
                 'label' => 'Description', // @translate
-                'info' => 'Description that appears above the items'
+                'info' => 'Description that appears with the items'
             ],
         ]);
         $form->add([
@@ -66,8 +66,10 @@ class BrowseBlock extends AbstractBlockLayout
             'options' => [
                 'label' => 'Number of columns', // @translate
                 'value_options' => [
-                    'is-half' => '2',  // @translate
-                    'is-one-third' => '3',  // @translate
+                    'col-md-6' => '2',  // @translate
+                    'col-md-4' => '3',  // @translate
+                    'col-md-3' => '4',  // @translate
+                    'col-md-6 kijker' => 'In de kijker', // @translate
                 ],
             ],
         ]);
@@ -132,6 +134,9 @@ class BrowseBlock extends AbstractBlockLayout
         if (!isset($query['sort_order'])) {
             $query['sort_order'] = 'desc';
         }
+        // if (!isset($query['resource_template_id'])) {
+        //     $query['resource_template_id'] = '3';
+        // }
 
         $response = $view->api()->search($resourceType, $query);
         $resources = $response->getContent();

@@ -1,4 +1,33 @@
-<div class="item-showcase">
+<section class="section">
+    <div class="container">
+        <input type="text" id="rfidcard">
+        <div class="main-container">
+            <div class="card" style="width: 18rem;">
+                <img class="card-img-top" src="..." alt="Card image cap">
+                <div class="card-body">
+                    <p id="fname"></p>
+                    <p id="lname"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+    $(document).ready(function(){
+        $('#rfidcard').focus();
+        $('body').mousemove(function(){
+            $('#rfidcard').focus();
+        });
+
+        
+    });
+</script>
+
+
+
+
+<!-- <div class="item-showcase">
 <?php foreach ($attachments as $attachment): ?>
     <div class="item resource">
     <?php
@@ -14,7 +43,7 @@
         <?php $showTitleOption = $this->showTitleOption; ?>
         <?php if ($showTitleOption == 'item_title'): ?>
         <h3><?php echo $item->link($item->displayTitle()); ?></h3>
-        <?php elseif ($showTitleOption == 'file_name'): ?>
+        <?php elseif ($showTitleOption == 'file_name' && $media): ?>
         <h3><?php echo $media->displayTitle(); ?></h3>
         <?php endif; ?>
     <?php endif; ?>
@@ -27,4 +56,4 @@
     <?php endif; ?>
     </div>
 <?php endforeach; ?>
-</div>
+</div> -->

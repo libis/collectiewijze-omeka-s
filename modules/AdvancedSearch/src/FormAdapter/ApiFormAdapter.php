@@ -97,7 +97,21 @@ class ApiFormAdapter implements FormAdapterInterface
             return;
         }
 
+        // Copied from \Omeka\Api\Adapter\ItemAdapter::buildQuery(), etc.
+
+        if (isset($metadata['is_public']) && isset($request['is_public'])) {
+            $query->addFilter($metadata['is_public'], (bool) $request['is_public']);
+        }
+
+        if (isset($metadata['id']) && !empty($request['id'])) {
+            $this->addIntegersFilterToQuery($query, $metadata['id'], $request['id']);
+        }
+
         if (isset($metadata['owner_id']) && !empty($request['owner_id'])) {
+            $this->addIntegersFilterToQuery($query, $metadata['owner_id'], $request['owner_id']);
+        }
+
+        if (isset($metadata['site_id']) && !empty($request['site_id'])) {
             $this->addIntegersFilterToQuery($query, $metadata['owner_id'], $request['owner_id']);
         }
 
@@ -123,17 +137,9 @@ class ApiFormAdapter implements FormAdapterInterface
             $this->addIntegersFilterToQuery($query, $metadata['resource_template_id'], $request['resource_template_id']);
         }
 
-        // Copied from \Omeka\Api\Adapter\ItemAdapter::buildQuery()
-
-        if (isset($metadata['id']) && !empty($request['id'])) {
-            $this->addIntegersFilterToQuery($query, $metadata['id'], $request['id']);
-        }
-
         if (isset($metadata['item_set_id']) && !empty($request['item_set_id'])) {
             $this->addIntegersFilterToQuery($query, $metadata['item_set_id'], $request['item_set_id']);
         }
-
-        // Copied from \Omeka\Api\Adapter\ItemSetAdapter::buildQuery()
 
         if (isset($metadata['is_open']) && isset($request['is_open'])) {
             $query->addFilter($metadata['is_open'], (bool) $request['is_open']);
@@ -218,6 +224,10 @@ class ApiFormAdapter implements FormAdapterInterface
                 case 'res':
                 case 'nex':
                 case 'ex':
+                case 'nlex':
+                case 'lex':
+                case 'nlres':
+                case 'lres':
                     $query->addFilterQuery($propertyField, $value, $queryType);
                     break;
                 default:
@@ -231,32 +241,33 @@ class ApiFormAdapter implements FormAdapterInterface
      *
      * @todo Factorize with \AdvancedSearch\Mvc\Controller\Plugin\ApiSearch::normalizeProperty().
      *
-     * @param string|int $property
-     * @return string
+     * @param string|int $termOrId
      */
-    protected function normalizeProperty($property)
+    protected function normalizeProperty($termOrId): string
     {
         static $properties;
 
-        if (!$property) {
+        if (!$termOrId) {
             return '';
         }
 
         if (is_null($properties)) {
             $sql = <<<'SQL'
-SELECT property.id, CONCAT(vocabulary.prefix, ":", property.local_name)
+SELECT
+    CONCAT(vocabulary.prefix, ":", property.local_name),
+    property.id
 FROM property
 JOIN vocabulary ON vocabulary.id = property.vocabulary_id
 SQL;
-            $properties = $this->connection
-                ->executeQuery($sql)->fetchAll(\PDO::FETCH_KEY_PAIR);
+            $properties = array_map('intval', $this->connection->executeQuery($sql)->fetchAllKeyValue());
         }
-        if (is_numeric($property)) {
-            $property = (int) $property;
-            return $properties[$property] ?? '';
+
+        if (is_numeric($termOrId)) {
+            return array_search((int) $termOrId, $properties) ?: '';
         }
-        $property = (string) $property;
-        return in_array($property, $properties) ? $property : '';
+
+        $termOrId = (string) $termOrId;
+        return isset($properties[$termOrId]) ? $termOrId : '';
     }
 
     /**

@@ -2,7 +2,7 @@
 $translate = $this->plugin('translate');
 $searchValue = $this->escapeHtml($this->params()->fromQuery('fulltext_search', ''));
 ?>
-  <form class="has-icons-right" action="https://blendeff.be/nl/index/search" id="search-form">
+  <form class="has-icons-right" action="/tdc/s/tdc/find" id="search-form">
     <div class="field has-addons">
       <div class="control">
         <input class="input is-medium" type="search" name="fulltext_search" value="<?php echo $searchValue; ?>"

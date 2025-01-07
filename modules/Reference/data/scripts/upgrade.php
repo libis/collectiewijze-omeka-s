@@ -24,13 +24,27 @@ $settings = $services->get('Omeka\Settings');
 $connection = $services->get('Omeka\Connection');
 $config = require dirname(__DIR__, 2) . '/config/module.config.php';
 
-// The reference plugin is not available during upgrade.
+// The reference plugin is not available during upgrade, so prepare it.
 include_once dirname(__DIR__, 2) . '/src/Mvc/Controller/Plugin/References.php';
 include_once dirname(__DIR__, 2) . '/src/Mvc/Controller/Plugin/ReferenceTree.php';
 $entityManager = $services->get('Omeka\EntityManager');
 $controllerPluginManager = $services->get('ControllerPluginManager');
 $api = $controllerPluginManager->get('api');
-$referencesPlugin = new Mvc\Controller\Plugin\References($entityManager, $services->get('Omeka\ApiAdapterManager'), $api, $controllerPluginManager->get('translate'), [], [], [], false);
+/** @var \Omeka\Module\Manager $moduleManager */
+$moduleManager = $services->get('Omeka\ModuleManager');
+$module = $moduleManager->getModule('AdvancedSearch');
+$hasAdvancedSearch = $module
+    && $module->getState() === \Omeka\Module\Manager::STATE_ACTIVE;
+$referencesPlugin = new Mvc\Controller\Plugin\References(
+    $services->get('Omeka\EntityManager'),
+    $services->get('Omeka\ApiAdapterManager'),
+    $services->get('Omeka\Acl'),
+    $services->get('Omeka\AuthenticationService')->getIdentity(),
+    $api,
+    $services->get('ControllerPluginManager')->get('translate'),
+    false,
+    $hasAdvancedSearch
+);
 $referenceTreePlugin = new Mvc\Controller\Plugin\ReferenceTree($api, $referencesPlugin);
 
 if (version_compare($oldVersion, '3.4.5', '<')) {
@@ -60,7 +74,8 @@ if (version_compare($oldVersion, '3.4.5', '<')) {
 }
 
 if (version_compare($oldVersion, '3.4.7', '<')) {
-    $tree = $settings->get('reference_tree_hierarchy', '');
+    $tree = $settings->get('reference_tree_hierarchy') ?: [];
+    $tree = (array) $tree;
     $treeString = $referenceTreePlugin->convertFlatLevelsToTree($tree);
     $settings->set(
         'reference_tree_hierarchy',
@@ -260,27 +275,25 @@ if (version_compare($oldVersion, '3.4.23.3', '<')) {
 
         $qb = $connection->createQueryBuilder();
         $qb
-            ->select([
-                'DISTINCT property.id AS id',
-                'CONCAT(vocabulary.prefix, ":", property.local_name) AS term',
-            ])
+            ->select(
+                'DISTINCT CONCAT(vocabulary.prefix, ":", property.local_name) AS term',
+                'property.id AS id'
+            )
             ->from('property', 'property')
             ->innerJoin('property', 'vocabulary', 'vocabulary', 'property.vocabulary_id = vocabulary.id');
-        // Fetch by key pair is not supported by doctrine 2.0.
-        $result = $connection->executeQuery($qb)->fetchAll(\PDO::FETCH_ASSOC);
-        $terms['properties'] = array_map('intval', array_column($result, 'id', 'term'));
+        $result = $connection->executeQuery($qb)->fetchAllKeyValue();
+        $terms['properties'] = array_map('intval', $result);
 
         $qb = $connection->createQueryBuilder();
         $qb
-            ->select([
-                'DISTINCT resource_class.id AS id',
-                'CONCAT(vocabulary.prefix, ":", resource_class.local_name) AS term',
-            ])
+            ->select(
+                'DISTINCT CONCAT(vocabulary.prefix, ":", resource_class.local_name) AS term',
+                'resource_class.id AS id'
+            )
             ->from('resource_class', 'resource_class')
             ->innerJoin('resource_class', 'vocabulary', 'vocabulary', 'resource_class.vocabulary_id = vocabulary.id');
-        // Fetch by key pair is not supported by doctrine 2.0.
-        $result = $connection->executeQuery($qb)->fetchAll(\PDO::FETCH_ASSOC);
-        $terms['resource_classes'] = array_map('intval', array_column($result, 'id', 'term'));
+        $result = $connection->executeQuery($qb)->fetchAllKeyValue();
+        $terms['resource_classes'] = array_map('intval', $result);
 
         return $terms;
     };
@@ -347,10 +360,89 @@ if (version_compare($oldVersion, '3.4.24.3', '<')) {
     $message = new Message(
         'It is possible now to limit the list of references, for example only the of subjects starting with "a" with argument "filters[begin]=a".' // @translate
     );
-    $messenger->addWarning($message);
+    $messenger->addSuccess($message);
 
     $message = new Message(
         'It is possible now to list not only references, but resources by reference, for example all documents of an author or all items with each subject.' // @translate
     );
+    $messenger->addSuccess($message);
+}
+
+if (version_compare($oldVersion, '3.4.32.3', '<')) {
+    $messenger = new Messenger();
+    $message = new Message(
+        'It is possible now to aggregate properties (api and helper).' // @translate
+    );
+    $messenger->addSuccess($message);
+}
+
+if (version_compare($oldVersion, '3.4.33.3', '<')) {
+    $messenger = new Messenger();
+    $message = new Message(
+        'It is possible now to filter references by data types.' // @translate
+    );
+    $messenger->addSuccess($message);
+}
+
+if (version_compare($oldVersion, '3.4.34.3', '<')) {
+    $this->execSqlFromFile($this->modulePath() . '/data/install/schema.sql');
+
+    $messenger = new Messenger();
+    $message = new Message(
+        'It is possible now to get translated linked resource.' // @translate
+    );
+    // Job is not available during upgrade.
+    $messenger->addSuccess($message);
+    $message = new Message(
+        'Translated linked resource metadata should be indexed in main settings.' // @translate
+    );
     $messenger->addWarning($message);
+}
+
+if (version_compare($oldVersion, '3.4.35.3', '<')) {
+    $repository = $entityManager->getRepository(\Omeka\Entity\SitePageBlock::class);
+    /** @var \Omeka\Entity\SitePageBlock[] $blocks */
+    $blocks = $repository->findBy(['layout' => 'reference']);
+    foreach ($blocks as $block) {
+        $data = $block->getData();
+        $data['args']['fields'] = [$data['args']['term']];
+        // The term is kept for compatibility with old themes, at least until edition of the page.
+        $block->setData($data);
+        $entityManager->persist($block);
+    }
+    $entityManager->flush();
+
+    $blocks = $repository->findBy(['layout' => 'referenceIndex']);
+    foreach ($blocks as $block) {
+        $data = $block->getData();
+        $data['args']['fields'] = $data['args']['terms'];
+        // The term is kept for compatibility with old themes, at least until edition of the page.
+        $block->setData($data);
+        $entityManager->persist($block);
+    }
+    $entityManager->flush();
+
+    $blocks = $repository->findBy(['layout' => 'referenceTree']);
+    foreach ($blocks as $block) {
+        $data = $block->getData();
+        $data['fields'] = [$data['term']];
+        // The term is kept for compatibility with old themes, at least until edition of the page.
+        $block->setData($data);
+        $entityManager->persist($block);
+    }
+    $entityManager->flush();
+
+    $messenger = new Messenger();
+    $message = new Message(
+        'It is possible now to aggregate properties in references, for example to get list of people from properties dcterms:creator and dcterms:contributor.' // @translate
+    );
+    $messenger->addSuccess($message);
+    $message = new Message(
+        'Warning: the name of the source properties or classes "term" has been replace by "fields" in pages, so check your theme templates if you updated the default ones of the module.' // @translate
+    );
+    $messenger->addWarning($message);
+    $message = new Message(
+        'It is possible now to get a specific number of initials, for example to get the list of years from standard dates.' // @translate
+    );
+    $messenger->addSuccess($message);
 }

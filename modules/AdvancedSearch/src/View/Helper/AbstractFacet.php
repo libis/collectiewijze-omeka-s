@@ -48,6 +48,11 @@ class AbstractFacet extends AbstractHelper
         $params = $view->params()->fromRoute();
         $queryBase = $view->params()->fromQuery();
 
+        // Keep browsing inside an item set.
+        if (!empty($params['item-set-id'])) {
+            $route = 'site/item-set';
+        }
+
         $isSiteRequest = $plugins->get('status')->isSiteRequest();
         if ($isSiteRequest) {
             $this->siteId = $plugins
@@ -105,54 +110,80 @@ class AbstractFacet extends AbstractHelper
         return $partialHelper($this->partial, $facetsData[$name]);
     }
 
+    /**
+     * The facets may be indexed by the search engine.
+     *
+     * @todo Remove search of facet labels: use values from the response.
+     */
     protected function facetValueLabel(string $name, string $value): ?string
     {
         if (!strlen($value)) {
             return null;
         }
 
-        // TODO Simplify the list of field names (for historical reasons).
         switch ($name) {
-            case 'resource':
-                $data = ['id' => $value];
-                // The site id is required in public.
-                if ($this->siteId) {
-                    $data['site_id'] = $this->siteId;
-                }
-                /** @var \Omeka\Api\Representation\ItemSetRepresentation $resource */
-                $resource = $this->api->searchOne('resources', $data)->getContent();
-                return $resource
-                ? (string) $resource->displayTitle()
-                // Manage the case where a resource was indexed but removed.
-                // In public side, the item set should belong to a site too.
-                : null;
+            case 'resource_name':
+            case 'resource_type':
+                return $value;
 
-            case 'item_set':
-            // Deprecated keys (use simple lower singular with "_").
-            case 'item_sets':
-            case 'itemSet':
-            case 'item_set_id':
-            case 'item_set_id_field':
+            case 'is_public':
+                return $value
+                    ? 'Private'
+                    : 'Public';
+
+            case 'id':
                 $data = ['id' => $value];
                 // The site id is required in public.
                 if ($this->siteId) {
                     $data['site_id'] = $this->siteId;
                 }
                 /** @var \Omeka\Api\Representation\ItemSetRepresentation $resource */
-                $resource = $this->api->searchOne('item_sets', $data)->getContent();
+                try {
+                    // Resources cannot be searched, only read.
+                    $resource = $this->api->read('resources', $data)->getContent();
+                } catch (\Exception $e) {
+                }
                 return $resource
                     ? (string) $resource->displayTitle()
                     // Manage the case where a resource was indexed but removed.
                     // In public side, the item set should belong to a site too.
                     : null;
 
+            case 'owner':
+            case 'owner_id':
+                /** @var \Omeka\Api\Representation\UserRepresentation $resource */
+                // Only allowed users can read and search users.
+                if (is_numeric($value)) {
+                    try {
+                        $resource = $this->api->read('users', ['id' => $value])->getContent();
+                    } catch (\Exception $e) {
+                        return null;
+                    }
+                    return $resource->name();
+                }
+                // No more check: email is not reference, so it always the name.
+                return $value;
+
+            case 'site':
+            case 'site_id':
+                /** @var \Omeka\Api\Representation\SiteRepresentation $resource */
+                if (is_numeric($value)) {
+                    try {
+                        $resource = $this->api->read('sites', ['id' => $value])->getContent();
+                    } catch (\Exception $e) {
+                        return null;
+                    }
+                    return $resource->title();
+                }
+                $resource = $this->api->searchOne('sites', ['slug' => $value])->getContent();
+                return $resource
+                    ? $resource->title()
+                    // Manage the case where a resource was indexed but removed.
+                    : null;
+
             case 'class':
-            // Deprecated keys (use simple lower singular with "_").
-            case 'resource_class':
-            case 'resource_classes':
-            case 'resourceClass':
             case 'resource_class_id':
-            case 'resource_class_id_field':
+            case 'resource_class':
                 if (is_numeric($value)) {
                     try {
                         /** @var \Omeka\Api\Representation\ResourceClassRepresentation $resource */
@@ -167,15 +198,10 @@ class AbstractFacet extends AbstractHelper
                     ? $this->translate->__invoke($resource->label())
                     // Manage the case where a resource was indexed but removed.
                     : null;
-                break;
 
             case 'template':
-            // Deprecated keys (use simple lower singular with "_").
-            case 'resource_template':
-            case 'resource_templates':
-            case 'resourceTemplate':
             case 'resource_template_id':
-            case 'resource_template_id_field':
+            case 'resource_template':
                 if (is_numeric($value)) {
                     try {
                         /** @var \Omeka\Api\Representation\ResourceTemplateRepresentation $resource */
@@ -190,11 +216,24 @@ class AbstractFacet extends AbstractHelper
                     ? $resource->label()
                     // Manage the case where a resource was indexed but removed.
                     : null;
-                break;
+
+            case 'item_set':
+            case 'item_set_id':
+            case 'item_set':
+                $data = ['id' => $value];
+                // The site id is required in public.
+                if ($this->siteId) {
+                    $data['site_id'] = $this->siteId;
+                }
+                /** @var \Omeka\Api\Representation\ItemSetRepresentation $resource */
+                $resource = $this->api->searchOne('item_sets', $data)->getContent();
+                return $resource
+                    ? (string) $resource->displayTitle()
+                    // Manage the case where a resource was indexed but removed.
+                    // In public side, the item set should belong to a site too.
+                    : null;
 
             case 'property':
-            // Deprecated keys (use simple lower singular with "_").
-            case 'properties':
             default:
                 return $value;
         }

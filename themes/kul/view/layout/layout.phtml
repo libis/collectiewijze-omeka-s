@@ -1,4 +1,7 @@
 <?php
+
+use ValueSuggest\Suggester\Lc\Search;
+
 $escape = $this->plugin('escapeHtml');
 $siteTitle = $site->title();
 $this->htmlElement('html')->setAttribute('lang', $this->lang());
@@ -17,6 +20,7 @@ $this->headScript()->prependFile($this->assetUrl('js/selectize.js'));
 
 $this->headScript()->prependFile($this->assetUrl('js/global.js', 'Omeka'));
 $this->headScript()->prependFile($this->assetUrl('vendor/jquery/jquery.min.js', 'Omeka'));
+
 $this->trigger('view.layout');
 $userBar = $this->userBar();
 
@@ -27,6 +31,16 @@ if (strpos($url, 'page/home') !== false) {
 }else{
   $home = false;
 }
+if (strpos($url, 'item') !== false) {
+  $itempage = true;
+}else{
+$itempage = false;
+}
+if (strpos($url, 'page/rfid') !== false) {
+  $rfid = true;
+}else{
+$rfid = false;
+}
 ?>
 <?php echo $this->doctype(); ?>
 <?php echo $this->htmlElement('html'); ?>
@@ -36,31 +50,51 @@ if (strpos($url, 'page/home') !== false) {
         <?php echo $this->headLink(); ?>
         <?php echo $this->headStyle(); ?>
         <?php echo $this->headScript(); ?>
-        <meta charset="utf-8">
-        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        
+        
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <script src="https://kit.fontawesome.com/582fb8c29f.js" crossorigin="anonymous"></script>
         <script src="https://unpkg.com/colcade@0/colcade.js"></script>
 
         <!-- Global site tag (gtag.js) - Google Analytics -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-X95H7QQCZD"></script>
+        <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=G-X95H7QQCZD"></script> -->
 
-        <!-- Google Fonts used in the housestyle -->
+        <!-- Google Fonts used in the housestyle --> 
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Icons&amp;family=Source+Sans+Pro:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&amp;family=Source+Serif+Pro:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&amp;display=swap">
         
         <!-- Latest compiled and minified CSS -->
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.1.3/dist/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
         <link rel="stylesheet" href="//stijl.kuleuven.be/releases/latest/css/main.css">
         <link rel="stylesheet" href="//stijl.kuleuven.be/releases/latest/css/wms.css">
+        <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.9.0/slick-theme.css"/>
 
-        <script>
+        <!-- <script>
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
         
           gtag('config', 'G-X95H7QQCZD');
-        </script>
+        </script> -->
     </head>
-
+<style>
+  .open {
+    background: #1f5ea9;
+  color: white;
+  padding: 0rem 0.6rem;
+  border-radius: 50%;
+  margin-left: 0.2rem;
+  font-size: 0.9rem;
+  display: inline-block;
+  }
+  .tooltip-content {
+  padding: 1rem 2rem 1rem 1rem;
+  background: #1f5ea9;
+  color: white;
+  z-index: 100;
+  font-weight: 300;
+  margin:2em 0;
+  }
+</style>
     <?php echo $this->htmlElement('body'); ?>
     <?php echo $userBar; ?>
     <div class="l-page">
@@ -91,12 +125,22 @@ if (strpos($url, 'page/home') !== false) {
           </div>
         </div>
       </nav>
+
+<!-- The hamburger flyout menu -->
+<div class="collapse navbar-collapse" id="flyout-local-menu">
+<?php
+              echo $site->publicNav()->menu()->renderMenu(null, [
+                  'maxDepth' => $this->themeSetting('nav_depth') - 1
+              ]);
+            ?>
+</div>
+
       <!-- Include local header-->
       <nav class="local-header">
         <div class="container container-relative">
           <nav class="nav-header">
             <h2>
-              <a href="<?php echo $site->url(); ?>">Herkul</a>
+              <a href="<?php echo $site->url(); ?>">Materialendatabank – Technisch Documentatiecentrum Gent</a>
               <a
                 href="#"
                 class="btn-toggle hidden-lg-up"
@@ -120,27 +164,98 @@ if (strpos($url, 'page/home') !== false) {
           </nav>
         </div>
       </nav>  
-
+      <!-- <div class="search-menu">
+          <?php echo $this->partial('common/search-form'); ?>
+        </div> -->
       <div class="wrapper">       
         <?php echo $this->content; ?>            
       </div>
     </div>  
+
+<?php if($rfid):?>
+  <section class="section">
+    <div class="container">
+        <div class="text-center" style="padding-bottom: 2rem;">Leg je materiaal in het vierkant om de technische informatie over dit materiaal op te roepen.</div>
+        <form name="form" id="rfid" action="" method="POST">
+          <input type="text" id="rfidcard" name="rfid" value="" autofocus>
+        </form>
+        <div class="text-center" style="padding-top: 2rem;">
+          <img class="rounded mx-auto d-block" src="<?php echo $this->assetUrl('img/rfid.jpg');?>" alt="RFID plaat">
+        </div>
+    </div>
+    <?php 
+    if(!empty($_POST['rfid'])){
+      $rfidpost = $_POST['rfid'];
+      $itemRepresentation = $this->api()->searchOne('items', ['property' => [['property' => 'tdc:staalnummers','text' => "${rfidpost}",'type' => 'eq',],],])->getContent();
+      //echo $itemRepresentation->displayTitle();
+      //echo $itemRepresentation->value('tdc:staalnummers');
+      //echo $itemRepresentation->id();
+      $itemId = $itemRepresentation->id();
+    }
+    ?>
+</section>
+
+
+
+<script>
+    $(document).ready(function(){
+        $('#rfidcard').focus();
+        $('body').mousemove(function(){
+            $('#rfidcard').focus();
+        });
+        if (<?php echo $itemId; ?> > 0){
+          window.open("/materialendatabank/s/tdc/item/<?php echo $itemId; ?>","_blank");
+        }
+    });
+
+    // var barcode;
+    // var interval;
+    // document.addEventListener('keydown', function(evt){
+    //   if(interval)
+    //     clearInterval(interval);
+    //   if(evt.code == 'Enter'){
+    //     if(barcode)
+    //       handleBarcode(barcode);
+    //     barcode = '';
+    //     return;
+    //   }
+    //   if (evt.key != 'Shift')
+    //     barcode += evt.key;
+    //   // interval = setInterval(() => barcode = '', 20);
+    // })
+
+    // function handleBarcode(scanned_barcode){
+    //   document.querySelector('#rfidcard').innerHTML = scanned_barcode;
+    // }
+
+</script>
+<?php endif;?>
+
     <!-- Include local footer--><!-- LOCAL FOOTER -->
     <footer class="local-footer">
       <div class="footer-info">
         <div class="container">
-          <div class="reactionfull">
+          <?php if($itempage){ ?>
+            <div class="text-justify"><p>
+          <b>Belangrijke info:</b> <em>De gegevens in deze databank zijn gebaseerd op technische documentatie die beschikbaar gesteld is door de fabrikant van het materiaal of product. Hoewel de informatie in deze databank regelmatig wordt bijgewerkt, mag men er niet van uitgaan dat deze informatie de meest recente gegevens bevatten met betrekking tot het materiaal of product. Voor de meest recente en correctie informatie, moet de website van de fabrikant geconsulteerd worden. De materialenbibliotheek neemt deze gegevens over van de fabrikant, zonder de juistheid ervan te controleren. Sommige informatie werd rechtstreeks aangeleverd door de fabrikant en werd steekproefgewijs gecontroleerd. De materialenbibliotheek kan geen garanties geven over de kwaliteit van de materialen of producten in deze databank.</br>
+
+De informatie in deze databank is samengesteld met het oog op informatie verschaffen voor studenten aan de KU Leuven Faculteit Architectuur en Faculteit Industriële Ingenieurswetenschappen, om een beter inzicht te krijgen in verschillende materialen, hun eigenschappen en toepassingen. Het is een overzicht van de materialen aanwezig in de bibliotheek, en is op geen enkele manier een exhaustieve databank van materialen of producten. Het is ook niet de bedoeling van de databank om materialen van verschillende producenten tegenover elkaar te plaatsen.
+            </em></p></div>
+          <?php } ?>
+
+          <!-- <div class="reactionfull">
             <p class="lastmodified">Laatste update: 01-01-2022</p>
             <span>Reacties op inhoud:</span>
             <a class="reaction" href=""></a>
-          </div>
+          </div> -->
         </div>
-        <!-- end container -->      
+        <!-- end container -->    
+          </div>  
       <!-- end footer-info -->
     </footer>
     <!-- END LOCAL FOOTER -->
 
-    </div><a class="scroll-to-top" href="#top">
+    <div><a class="scroll-to-top" href="#top">
       <i class="material-icons">keyboard_arrow_up</i></a>
       <!-- Include global footer-->
       <footer class="global-footer noindex hidden-print">
@@ -170,10 +285,16 @@ if (strpos($url, 'page/home') !== false) {
                 <li>
                   <a href="https://admin.kuleuven.be/privacy/">Privacybeleid</a>
                 </li>
+                <li>
+                  Design iconen @Nyall Smith
+                </li>
+                <li>
+                  Built by <a href="https://libis.be/">LIBIS</a>
+                </li>
               </ul>
             </div>
             <div class="share">
-              <span>Volg KU&nbsp;Leuven via</span>
+              <span>Volg KU&nbsp;Leuven:</span>
               <a href="https://www.facebook.com/KULeuven/">
                 <svg role="img" width="30" height="30" viewBox="0 0 1792 1792">
                   <title>facebook</title>
@@ -327,9 +448,8 @@ if (strpos($url, 'page/home') !== false) {
     </div>
     </aside>
 
-    <script src="../js/all.min.js"></script>
-  </body>
-</html>
+    <!-- <script src="../js/all.min.js"></script> -->
+
   
   <script>
   $(document).ready(function() {
@@ -352,12 +472,37 @@ if (strpos($url, 'page/home') !== false) {
     });
 
     $(".wrapper .container:first").addClass("first");
+
+    $(".navigation li:nth-last-child(3) a").attr('target', '_blank');
   });
+
+    function waitForElement(selector) {
+    return new Promise((resolve) => {
+        const observer = new MutationObserver((mutations, observer) => {
+            const element = document.querySelector(selector);
+            if (element) {
+                observer.disconnect();
+                resolve(element);
+            }
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+        });
+    });
+}
+
+// Usage
+waitForElement('.chosen-search-input').then((element) => {
+  $(".chosen-search-input").removeAttr('readonly');
+  $(".chosen-container-single-nosearch").removeClass("chosen-container-single-nosearch");
+    // Perform actions on the element
+});
   </script>
 
 
 <!-- Latest compiled and minified JS -->
 <script src="//stijl.kuleuven.be/releases/latest/js/all.min.js"></script>
-
-
+</body>
 </html>

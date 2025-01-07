@@ -1,6 +1,6 @@
 /*
  * Copyright BibLibre, 2016
- * Copyright Daniel Berthereau, 2017-2021
+ * Copyright Daniel Berthereau, 2017-2022
  *
  * This software is governed by the CeCILL license under French law and abiding
  * by the rules of distribution of free software.  You can use, modify and/ or
@@ -30,10 +30,12 @@ var Search = (function() {
     var self = {};
 
     self.setViewType = function(viewType) {
-        var resourceLists = document.querySelectorAll('.search-results .resource-list');
+        // In some themes, the mode for resource list is set with a different class.
+        var resourceLists = document.querySelectorAll('.search-results .resource-list, .search-results .resources-list-content');
         for (var i = 0; i < resourceLists.length; i++) {
             var resourceItem = resourceLists[i];
-            resourceItem.className = 'resource-list ' + viewType;
+            resourceItem.className = resourceItem.className.replace(' grid', '').replace(' list', '')
+                + ' ' + viewType;
         }
         localStorage.setItem('search_view_type', viewType);
     };
@@ -131,8 +133,36 @@ $(document).ready(function() {
         // $('#search-form [name=q]').focus();
     });
 
-    /* Sort selector links (depending if server of client build) */
-    $('.search-sort select').on('change', function(e) {
+    /* Results tools (sort, pagination, per-page) */
+
+    $('.as-url select, select.as-url').on('change', function(e) {
+        const url = $(this).find('option:selected').data('url');
+        if (url && url.length && window.location !== url) {
+            window.location = url;
+        };
+    });
+
+    /* Per-page selector links (depending if server or client build) */
+    /* @deprecated Kept for old themes: use ".as-url" instead */
+    $('.search-results-per-page:not(.as-url) select').on('change', function(e) {
+        // Per-page fields don't look like a url.
+        e.preventDefault();
+        var perPage = $(this).val();
+        if (perPage.substring(0, 6) === 'https:' || perPage.substring(0, 5) === 'http:') {
+            window.location = perPage;
+        } else if (perPage.substring(0, 1) === '/') {
+            window.location = window.location.origin + perPage;
+        } else {
+            var searchParams = new URLSearchParams(window.location.search);
+            searchParams.set('page', 1);
+            searchParams.set('per_page', $(this).val());
+            window.location.search = searchParams.toString();
+        }
+    });
+
+    /* Sort selector links (depending if server or client build) */
+    /* @deprecated Kept for old themes: use ".as-url" instead. */
+    $('.search-sort:not(.as-url) select').on('change', function(e) {
         // Sort fields don't look like a url.
         e.preventDefault();
         var sort = $(this).val();
@@ -146,6 +176,8 @@ $(document).ready(function() {
             window.location.search = searchParams.toString();
         }
     });
+
+    /* Facets. */
 
     $('.search-facets-active a').on('click', function(e) {
         // Reload with the link when there is no button to apply facets.
@@ -199,14 +231,14 @@ $(document).ready(function() {
         e.preventDefault();
         Search.setViewType('list');
         $('.search-view-type').removeClass('active');
-        $(this).addClass('active');
+        $('.search-view-type-list').addClass('active');
     });
 
     $('.search-view-type-grid').on('click', function(e) {
         e.preventDefault();
         Search.setViewType('grid');
         $('.search-view-type').removeClass('active');
-        $(this).addClass('active');
+        $('.search-view-type-grid').addClass('active');
     });
 
     /**********
@@ -237,5 +269,24 @@ $(document).ready(function() {
     if ($.isFunction($.fn.chosen)) {
         $('.chosen-select').chosen(Search.chosenOptions);
     }
+
+    /********
+     * Standard advanced search form.
+     */
+
+    // Disable query text according to some query types without values.
+    // See global.js.
+    function disableQueryTextInput(queryType) {
+        var queryText = queryType.siblings('.query-text');
+        queryText.prop('disabled',
+            ['ex', 'nex', 'lex', 'nlex'].indexOf(queryType.val()) !== -1);
+    };
+    $(document).on('change', '.query-type', function () {
+         disableQueryTextInput($(this));
+    });
+    // Updating querying should be done on load too.
+    $('#property-queries .query-type').each(function() {
+         disableQueryTextInput($(this));
+    });
 
 });
